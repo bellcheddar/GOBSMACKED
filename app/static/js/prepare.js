@@ -49,11 +49,34 @@
     });
   }
 
+  var STAGE = { fetch: 0, annotate: 1, fold: 2, dock: 3, md: 4, verify: 5, mode: 6 };
+
   function setStage(index, stateName, text) {
-    var cells = document.querySelectorAll(".stages .stage");
+    var cells = document.querySelectorAll(".rail .stage");
     if (!cells[index]) return;
     cells[index].className = "stage " + stateName;
     cells[index].querySelector("span").textContent = text;
+  }
+
+  /* Dock and MD are satisfied by a ligand AND a pocket, and neither on its own
+     is any use, so they are recomputed together whenever either changes rather
+     than being set optimistically by whichever panel was filled in last. */
+  function refreshRun() {
+    var missing = [];
+    if (!state.ligand) missing.push("a ligand");
+    if (!state.pocket || !state.pocket.residues || !state.pocket.residues.length) {
+      missing.push("a pocket");
+    }
+    if (missing.length) {
+      setStage(STAGE.dock, "required", "needs " + missing.join(" and "));
+      setStage(STAGE.md, "pending", "runs on whatever docking produces");
+    } else {
+      setStage(STAGE.dock, "ready",
+               "PandaDock " + $("dock-mode").value + ", " + $("num-poses").value + " poses");
+      setStage(STAGE.md, "ready",
+               "OpenMM, " + $("production").value + " ps, frame every " + $("frame-interval").value + " ps");
+    }
+    maybeUnlockRun();
   }
 
   // --- Panel 1: protein ----------------------------------------------------
@@ -67,7 +90,7 @@
       return;
     }
     say("protein-result", "Fetching...");
-    setStage(0, "warn", "fetching");
+    setStage(STAGE.fetch, "pending", "fetching...");
 
     var form = new FormData();
     form.append("query", query);
@@ -89,7 +112,7 @@
       })
       .catch(function (err) {
         say("protein-result", err.message, "error");
-        setStage(0, "fail", "failed");
+        setStage(STAGE.fetch, "required", err.message.slice(0, 70));
       });
   }
 
@@ -116,9 +139,11 @@
       warnings.appendChild(li);
     });
 
-    setStage(0, "done", source + (data.source_id ? " " + data.source_id : ""));
-    setStage(2, data.source_structure === "fold" ? "warn" : "done",
-             data.source_structure === "fold" ? "ESMFold in the bundle" : "skipped, model supplied");
+    setStage(STAGE.fetch, "ready", source + (data.source_id ? " " + data.source_id : ""));
+    setStage(STAGE.fold, data.source_structure === "fold" ? "optional" : "ready",
+             data.source_structure === "fold"
+               ? "no model found: ESMFold will run in the bundle"
+               : "skipped, a model was supplied");
 
     unlock("panel-ligand", true);
     unlock("panel-track", true);
@@ -156,7 +181,7 @@
   // --- Panel 2: annotation -------------------------------------------------
 
   function annotate(protein) {
-    setStage(1, "warn", "annotating");
+    setStage(STAGE.annotate, "pending", "annotating...");
     return postJSON("/api/annotate", {
       uniprot: protein.accession, sequence: protein.sequence,
       gene: protein.gene, features: protein.features,
@@ -164,16 +189,17 @@
       state.annotation = data;
       renderAnnotation(data, protein);
     }).catch(function (err) {
-      setStage(1, "fail", err.message);
+      setStage(STAGE.annotate, "optional", "annotation unavailable: " + err.message.slice(0, 50));
     });
   }
 
   function renderAnnotation(data, protein) {
     var family = data.family;
-    setStage(1, "done", family === "other" ? "UniProt features only" :
-             (family === "kinase" ? "KLIFS pocket" : "GPCRdb numbering"));
-    setStage(6, "pending", family === "kinase" ? "DFG, aC, subpockets" :
-             (family === "gpcr" ? "site and microswitches" : "contacts only"));
+    setStage(STAGE.annotate, "ready", family === "other" ? "UniProt features only" :
+             (family === "kinase" ? "kinase: KLIFS 85-residue pocket" : "GPCR: GPCRdb numbering"));
+    setStage(STAGE.mode, family === "other" ? "optional" : "ready",
+             family === "kinase" ? "DFG, alphaC and subpocket labels" :
+             (family === "gpcr" ? "site and microswitch labels" : "no family labels: contacts only"));
 
     var rows = [];
     rows.push(switchRow("Family", family, family !== "other"));
@@ -269,9 +295,7 @@
         data.rotatable + " rotatable", "logP " + data.logp,
       ].join(" &middot; "));
       unlock("panel-reference", true);
-      setStage(3, "done", "PandaDock " + $("dock-mode").value);
-      setStage(4, "done", $("production").value + " ps OpenMM");
-      maybeUnlockRun();
+      refreshRun();
     }).catch(function (err) {
       say("ligand-props", err.message, "error");
     });
@@ -333,7 +357,7 @@
       say("pocket-result", "No structure to measure a box on. The bundle will centre the box on " +
           "the residues you name once it has folded the sequence.", "error");
       state.pocket = { method: "residues", residues: Object.keys(selected) };
-      maybeUnlockRun();
+      refreshRun();
       return;
     }
     var body = {
@@ -375,7 +399,7 @@
         var parts = key.split(":");
         return { chain: parts[0], seqId: parseInt(parts[1], 10) };
       }));
-      maybeUnlockRun();
+      refreshRun();
     }).catch(function (err) {
       say("pocket-result", err.message, "error");
     });
@@ -439,7 +463,7 @@
     var entry = state.references.filter(function (e) { return e.pdb_id === pdbId; })[0];
     var ccd = entry && entry.best_ligand ? entry.best_ligand.ccd : null;
     state.reference = { pdb_id: pdbId, ligand_ccd: ccd, chain: null };
-    setStage(5, "done", pdbId + (ccd ? " " + ccd : " (apo)"));
+    setStage(STAGE.verify, "ready", pdbId + (ccd ? " and its ligand " + ccd : ", apo"));
 
     // The box and the list are one control: clicking a row fills the box, and
     // the box is what the panel reads back to you as the current choice.
@@ -675,7 +699,7 @@
       $("reference-list").querySelectorAll("tr[data-pdb]").forEach(function (row) {
         row.classList.remove("chosen");
       });
-      setStage(5, "warn", "unverified");
+      setStage(STAGE.verify, "optional", "unverified: no reference chosen");
       $("reference-list").innerHTML = "<p class='note'>No reference: the scorecard will show an " +
         "unverified banner and the overlay will have two states instead of three.</p>";
     });
@@ -697,11 +721,8 @@
       });
     });
 
-    ["dock-mode", "production"].forEach(function (id) {
-      $(id).addEventListener("change", function () {
-        setStage(3, "done", "PandaDock " + $("dock-mode").value);
-        setStage(4, "done", $("production").value + " ps OpenMM");
-      });
+    ["dock-mode", "production", "num-poses", "frame-interval"].forEach(function (id) {
+      $(id).addEventListener("change", refreshRun);
     });
   });
 })();

@@ -29,30 +29,36 @@ def owner_token_from_request() -> str | None:
 
 
 def stage_states(row) -> list[str]:
-    """The seven-cell ministrip for one run, from its status alone."""
+    """The seven-cell ministrip for one run, in the rail's own vocabulary."""
     status = row["status"]
     if status == "prepared":
-        return ["done", "done", "pending", "pending", "pending", "pending", "pending"]
+        return ["ready", "ready", "pending", "pending", "pending", "pending", "pending"]
     if status == "results_uploaded":
-        return ["done"] * 5 + ["pending", "pending"]
+        return ["ready"] * 5 + ["pending", "pending"]
     if status == "failed":
-        return ["done", "done", "fail", "fail", "fail", "fail", "fail"]
-    verify = "done" if row["reference_pdb"] else "warn"
-    mode = "done" if row["mode_match"] else ("warn" if row["mode_predicted"] else "pending")
-    return ["done"] * 5 + [verify, mode]
+        return ["ready", "ready", "failed", "failed", "failed", "failed", "failed"]
+    verify = "ready" if row["reference_pdb"] else "optional"
+    mode = "ready" if row["mode_match"] else ("optional" if row["mode_predicted"] else "pending")
+    return ["ready"] * 5 + [verify, mode]
 
 
 @bp.route("/runs")
 def runs_page():
     counts = db.status_counts()
+    total = sum(counts.values())
     stages = [
-        {"name": "Prepared", "text": f"{counts['prepared']} bundles", "state": "done"},
-        {"name": "Uploaded", "text": f"{counts['results_uploaded']} archives", "state": "done" if counts["results_uploaded"] else "pending"},
-        {"name": "Analysed", "text": f"{counts['analysed']} scored", "state": "done" if counts["analysed"] else "pending"},
-        {"name": "Failed", "text": f"{counts['failed']} runs", "state": "fail" if counts["failed"] else "pending"},
-        {"name": "Kinase", "text": "KLIFS numbering", "state": "pending"},
-        {"name": "GPCR", "text": "GPCRdb numbering", "state": "pending"},
-        {"name": "Other", "text": "UniProt features", "state": "pending"},
+        {"name": "Prepared", "state": "ready" if counts["prepared"] else "pending",
+         "text": f"{counts['prepared']} bundles written, not yet run"},
+        {"name": "Uploaded", "state": "ready" if counts["results_uploaded"] else "pending",
+         "text": f"{counts['results_uploaded']} archives in, not yet scored"},
+        {"name": "Analysed", "state": "ready" if counts["analysed"] else "pending",
+         "text": f"{counts['analysed']} runs scored"},
+        {"name": "Failed", "state": "failed" if counts["failed"] else "pending",
+         "text": (f"{counts['failed']} runs could not be analysed" if counts["failed"]
+                  else "none")},
+        {"name": "Kinase", "state": "optional", "text": "KLIFS pocket numbering"},
+        {"name": "GPCR", "state": "optional", "text": "GPCRdb generic numbering"},
+        {"name": "Other", "state": "optional", "text": "UniProt features only"},
     ]
     return render_template("runs.html", tab="runs", stages=stages)
 

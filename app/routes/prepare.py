@@ -28,20 +28,22 @@ bp = Blueprint("prepare", __name__)
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 
+# name, starting state, starting subtext. The state says what is still needed;
+# the subtext says what would satisfy it.
 PREPARE_STAGES = [
-    ("Fetch", "waiting for an input"),
-    ("Annotate", "family unknown"),
-    ("Fold", "decided once a structure is chosen"),
-    ("Dock", "PandaDock hybrid"),
-    ("MD", "OpenMM, 1 ns"),
-    ("Verify", "pick a reference"),
-    ("Mode", "set by the family"),
+    ("Fetch", "required", "paste a UniProt accession, PDB ID or sequence"),
+    ("Annotate", "pending", "family and pocket numbering, after Fetch"),
+    ("Fold", "pending", "decided by the structure Fetch finds"),
+    ("Dock", "required", "needs a ligand and a pocket"),
+    ("MD", "ready", "OpenMM, 1 ns, frame every 10 ps"),
+    ("Verify", "optional", "pick a reference, or run unverified"),
+    ("Mode", "pending", "set by the protein family"),
 ]
 
 
 @bp.route("/prepare")
 def prepare_page():
-    stages = [{"name": n, "text": t, "state": "pending"} for n, t in PREPARE_STAGES]
+    stages = [{"name": n, "state": st, "text": t} for n, st, t in PREPARE_STAGES]
     return render_template("prepare.html", tab="prepare", stages=stages)
 
 

@@ -27,13 +27,15 @@
   <a href="mailto:marc@marcdeller.com">marc@marcdeller.com</a>
 </div>
 
-{% block stages %}
-  {% if stages %}{% include "_stages.html" %}{% endif %}
-{% endblock %}
-
-{% block subnav %}{% endblock %}
-
-{% block content %}{% endblock %}
+<div class="shell">
+  {% block stages %}
+    {% if stages %}<aside class="rail">{% include "_stages.html" %}</aside>{% endif %}
+  {% endblock %}
+  <div class="shell-body">
+    {% block subnav %}{% endblock %}
+    {% block content %}{% endblock %}
+  </div>
+</div>
 
 <script src="{{ asset('js/stages.js') }}"></script>
 {% block scripts %}{% endblock %}

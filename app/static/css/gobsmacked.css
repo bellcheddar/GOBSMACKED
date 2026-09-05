@@ -60,22 +60,54 @@ a:hover { text-decoration: underline; }
 .brand nav a.current { color: var(--phos); }
 .brand .job { color: var(--muted); }
 
-/* --- Stage strip ------------------------------------------------------ */
-.stages {
-  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px;
-  padding: 18px 24px 0; max-width: var(--deck-max); margin: 0 auto;
+/* --- Stage rail -------------------------------------------------------- */
+/* The pipeline runs down the left, sticky, so it is always answering "what do
+   I still have to do". The edge colour is the whole vocabulary:
+       green  ready       this stage is satisfied
+       amber  optional    it will run, or not, and either is fine
+       red    needed      something is missing and the run cannot proceed
+       grey   pending     nothing to say yet, it depends on an earlier stage */
+.shell { display: flex; align-items: flex-start; gap: 0; }
+.shell-body { flex: 1 1 auto; min-width: 0; }
+
+.rail {
+  position: sticky; top: 0; align-self: flex-start;
+  flex: 0 0 210px; width: 210px; max-height: 100vh; overflow-y: auto;
+  padding: 18px 0 18px 18px;
 }
-.stage {
-  background: var(--panel); padding: 12px 14px; font-size: 12px;
-  border-top: 3px solid var(--line);
+.rail-list { list-style: none; margin: 0; padding: 0; }
+.rail .stage {
+  background: var(--panel); padding: 10px 12px; margin-bottom: 2px;
+  border-left: 3px solid var(--line); font-size: 12px;
 }
-.stage b { display: block; font-size: 14px; font-weight: 600; margin-bottom: 2px; }
-.stage span { color: var(--muted); }
-.stage.done { border-top-color: var(--green); }
-.stage.warn { border-top-color: var(--amber); }
-.stage.fail { border-top-color: var(--red); }
-.stage.pending { border-top-color: var(--line); }
-.stages .strip-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; }
+.rail .stage b { display: block; font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.rail .stage span { color: var(--muted); display: block; line-height: 1.35; }
+
+.stage.ready    { border-left-color: var(--green); }
+.stage.optional { border-left-color: var(--amber); }
+.stage.required { border-left-color: var(--red); }
+.stage.pending  { border-left-color: var(--line); }
+.stage.failed   { border-left-color: var(--red); background: rgba(255, 92, 92, .08); }
+/* The states the pipeline used before this rail existed, kept so nothing that
+   still sets them silently loses its colour. */
+.stage.done { border-left-color: var(--green); }
+.stage.warn { border-left-color: var(--amber); }
+.stage.fail { border-left-color: var(--red); background: rgba(255, 92, 92, .08); }
+
+.rail-key {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 10px 12px 0;
+  font-size: 11px; color: var(--muted);
+}
+.rail-key span { display: flex; align-items: center; gap: 5px; }
+.rail-key i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.rail-key i.ready { background: var(--green); }
+.rail-key i.optional { background: var(--amber); }
+.rail-key i.required { background: var(--red); }
+.rail-actions { padding: 12px 12px 0; display: flex; flex-direction: column; gap: 8px; }
+.rail-note {
+  display: block; font-size: 11px; color: var(--red);
+  border-left: 3px solid var(--red); padding: 6px 10px; background: rgba(255, 92, 92, .08);
+}
 
 /* --- Deck ------------------------------------------------------------- */
 :root { --deck-max: 1680px; }
@@ -322,9 +354,9 @@ td.num { text-align: right; }
 
 .ministrip { display: inline-flex; gap: 2px; }
 .ministrip i { width: 6px; height: 12px; background: var(--line); display: block; border-radius: 1px; }
-.ministrip i.done { background: var(--green); }
-.ministrip i.warn { background: var(--amber); }
-.ministrip i.fail { background: var(--red); }
+.ministrip i.ready, .ministrip i.done { background: var(--green); }
+.ministrip i.optional, .ministrip i.warn { background: var(--amber); }
+.ministrip i.failed, .ministrip i.fail { background: var(--red); }
 
 .key {
   font-family: 'Sora', monospace; font-size: 12px; background: var(--panel-2);
@@ -357,22 +389,40 @@ pre.cmd {
 .plot.tall { height: 380px; }
 
 /* --- Motion ----------------------------------------------------------- */
-@keyframes stage-in { from { border-top-color: var(--line); } to { border-top-color: var(--green); } }
-.stages.animate .stage.done { animation: stage-in 240ms ease-out both; }
-.stages.animate .stage:nth-child(1) { animation-delay: 0ms; }
-.stages.animate .stage:nth-child(2) { animation-delay: 80ms; }
-.stages.animate .stage:nth-child(3) { animation-delay: 160ms; }
-.stages.animate .stage:nth-child(4) { animation-delay: 240ms; }
-.stages.animate .stage:nth-child(5) { animation-delay: 320ms; }
-.stages.animate .stage:nth-child(6) { animation-delay: 400ms; }
-.stages.animate .stage:nth-child(7) { animation-delay: 480ms; }
+@keyframes stage-in { from { border-left-color: var(--line); } to { border-left-color: var(--green); } }
+.rail-list.animate .stage.ready { animation: stage-in 240ms ease-out both; }
+.rail-list.animate .stage:nth-child(1) { animation-delay: 0ms; }
+.rail-list.animate .stage:nth-child(2) { animation-delay: 80ms; }
+.rail-list.animate .stage:nth-child(3) { animation-delay: 160ms; }
+.rail-list.animate .stage:nth-child(4) { animation-delay: 240ms; }
+.rail-list.animate .stage:nth-child(5) { animation-delay: 320ms; }
+.rail-list.animate .stage:nth-child(6) { animation-delay: 400ms; }
+.rail-list.animate .stage:nth-child(7) { animation-delay: 480ms; }
 
 @media (prefers-reduced-motion: reduce) {
-  .stages.animate .stage.done { animation: none; }
+  .rail-list.animate .stage.ready { animation: none; }
   * { transition: none !important; }
 }
 
 /* --- Narrow ----------------------------------------------------------- */
+/* Narrow: the rail lies down across the top and stops being sticky, because a
+   210 px column beside a one-column deck leaves nothing for the content. */
+@media (max-width: 1000px) {
+  .shell { display: block; }
+  .rail {
+    position: static; width: auto; max-height: none; padding: 18px 24px 0;
+  }
+  .rail-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 2px; }
+  .rail .stage { border-left: none; border-top: 3px solid var(--line); margin-bottom: 0; }
+  .stage.ready { border-top-color: var(--green); border-left-color: transparent; }
+  .stage.optional { border-top-color: var(--amber); border-left-color: transparent; }
+  .stage.required { border-top-color: var(--red); border-left-color: transparent; }
+  .stage.pending { border-top-color: var(--line); border-left-color: transparent; }
+  .stage.failed, .stage.fail { border-top-color: var(--red); border-left-color: transparent; }
+  .stage.done { border-top-color: var(--green); border-left-color: transparent; }
+  .stage.warn { border-top-color: var(--amber); border-left-color: transparent; }
+}
+
 @media (max-width: 1250px) {
   .deck, .deck.wide { grid-template-columns: minmax(0, 1fr); }
   .deck.results, .deck.flow { grid-template-columns: minmax(0, 1fr); }
@@ -388,7 +438,7 @@ pre.cmd {
 @media print {
   :root { color-adjust: exact; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { background: var(--slate); }
-  .brand nav, .subnav, .strip-actions, button { display: none !important; }
+  .brand nav, .subnav, .rail, .rail-actions, button { display: none !important; }
   .deck { max-width: none; padding: 0 12px; }
   .card { break-inside: avoid; }
 }

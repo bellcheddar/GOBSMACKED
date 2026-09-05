@@ -36,11 +36,25 @@ bp = Blueprint("analyze", __name__)
 ANALYZE_STAGES = ["Fetch", "Annotate", "Fold", "Dock", "MD", "Verify", "Mode"]
 
 
+# What each rail cell will be filled in from, before an archive arrives.
+ANALYZE_WAITING = {
+    "Fetch": "the structure the bundle started from",
+    "Annotate": "the family, from the campaign",
+    "Fold": "whether ESMFold ran or a model was supplied",
+    "Dock": "poses and scores from the archive",
+    "MD": "the trajectory summary",
+    "Verify": "the reference named in the campaign",
+    "Mode": "family labels, once the archive is read",
+}
+
+
 @bp.route("/analyze")
 def analyze_page():
-    stages = [{"name": n, "text": "waiting for an archive", "state": "pending"}
+    stages = [{"name": n, "state": "pending", "text": ANALYZE_WAITING[n]}
               for n in ANALYZE_STAGES]
-    return render_template("analyze.html", tab="analyze", stages=stages)
+    return render_template(
+        "analyze.html", tab="analyze", stages=stages,
+        strip_actions='<span class="rail-note">Needed: a results.tar.gz from a run</span>')
 
 
 @bp.post("/api/upload")
@@ -426,30 +440,42 @@ def build_stages(card: dict, results: ingest_svc.Results) -> list[dict]:
         return f"{v:.0f} s" if isinstance(v, (int, float)) else ""
 
     stages = [
-        {"name": "Fetch", "state": "done",
+        {"name": "Fetch", "state": "ready",
          "text": f"{protein.get('source_structure', '?')} {protein.get('source_id') or ''}".strip()},
-        {"name": "Annotate", "state": "done" if card["modes"].get("family") != "other" else "warn",
-         "text": f"family {card['modes'].get('family')}"},
-        {"name": "Fold", "state": "done" if folded else "pending",
-         "text": "ESMFold " + timing("fold") if folded else "skipped, model supplied"},
-        {"name": "Dock", "state": "done",
-         "text": f"{(campaign.get('docking') or {}).get('mode', 'hybrid')} {timing('dock')}".strip()},
-        {"name": "MD", "state": "done" if card["dynamics"]["frames"] else "warn",
-         "text": f"{(campaign.get('md') or {}).get('production_ps', '?')} ps, "
-                 f"{card['dynamics']['frames']} frames"},
+        {"name": "Annotate",
+         "state": "ready" if card["modes"].get("family") != "other" else "optional",
+         "text": (f"{card['modes'].get('family')}: "
+                  + ("KLIFS pocket numbering" if card["modes"].get("family") == "kinase"
+                     else "GPCRdb numbering" if card["modes"].get("family") == "gpcr"
+                     else "UniProt features only"))},
+        {"name": "Fold", "state": "ready",
+         "text": (f"ESMFold, {timing('fold')}".strip() if folded
+                  else "skipped, a model was supplied")},
+        {"name": "Dock", "state": "ready",
+         "text": f"{(campaign.get('docking') or {}).get('mode', 'hybrid')}"
+                 f"{', ' + timing('dock') if timing('dock') else ''}"},
+        {"name": "MD",
+         "state": "ready" if card["dynamics"]["frames"] else "optional",
+         "text": (f"{(campaign.get('md') or {}).get('production_ps', '?')} ps, "
+                  f"{card['dynamics']['frames']} frames"
+                  if card["dynamics"]["frames"] else "no trajectory in this archive")},
     ]
     verified = card["scorecard"].get("verified")
+    fit = (card.get("superposed") or {}).get("md_final") or {}
     stages.append({
         "name": "Verify",
-        "state": "done" if verified else "warn",
-        "text": f"{card['reference'].get('pdb_id')} pocket-superposed" if verified
-                else "no reference chosen",
+        "state": "ready" if verified else "optional",
+        "text": (f"{card['reference'].get('pdb_id')}, {fit.get('atoms', '?')} pocket Ca"
+                 + (f", fit {fit['rmsd']} A" if fit.get("rmsd") is not None else "")) if verified
+                else "unverified: no reference was chosen",
     })
     verdict = card["modes"]["verdict"]
     stages.append({
         "name": "Mode",
-        "state": "done" if verdict.get("match") else ("warn" if verdict.get("match") is False else "pending"),
-        "text": verdict.get("verdict", ""),
+        "state": ("ready" if verdict.get("match")
+                  else "optional" if verdict.get("match") is False else "pending"),
+        "text": (verdict.get("verdict", "") if verdict.get("match") is not None
+                 else "unverified: nothing to compare the label to"),
     })
     return stages
 
@@ -489,7 +515,7 @@ def _best(*values, lowest: bool = True) -> Optional[float]:
 def render_results(row, card: Optional[dict], owned: bool = False):
     """The results page, shared by /runs/<job_id> and the post-upload redirect."""
     if card is None:
-        stages = [{"name": n, "text": "no results uploaded yet", "state": "pending"}
+        stages = [{"name": n, "state": "pending", "text": ANALYZE_WAITING[n]}
                   for n in ANALYZE_STAGES]
         return render_template("run_waiting.html", tab="runs", row=row, stages=stages,
                                job_id=row["job_id"], owned=owned)

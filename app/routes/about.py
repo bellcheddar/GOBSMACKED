@@ -34,13 +34,13 @@ def about_page():
             stages.append(item["stage"])
     grouped = [(s, [i for i in software if i.get("stage") == s]) for s in stages]
     strip = [
-        {"name": "Fetch", "text": "UniProt, RCSB, AFDB", "state": "done"},
-        {"name": "Annotate", "text": "InterPro, KLIFS, GPCRdb", "state": "done"},
-        {"name": "Fold", "text": "ESMFold", "state": "done"},
-        {"name": "Dock", "text": "PandaDock", "state": "done"},
-        {"name": "MD", "text": "OpenMM, OpenFF", "state": "done"},
-        {"name": "Verify", "text": "biotite, tmtools, PLIP", "state": "done"},
-        {"name": "Mode", "text": "KLIFS, GPCRdb", "state": "done"},
+        {"name": "Fetch", "state": "ready", "text": "UniProt, RCSB, AlphaFold DB, ESM Atlas"},
+        {"name": "Annotate", "state": "ready", "text": "InterPro, KLIFS, GPCRdb"},
+        {"name": "Fold", "state": "ready", "text": "ESMFold, in the bundle"},
+        {"name": "Dock", "state": "ready", "text": "PandaDock, in the bundle"},
+        {"name": "MD", "state": "ready", "text": "OpenMM and OpenFF, in the bundle"},
+        {"name": "Verify", "state": "ready", "text": "biotite, tmtools, PLIP"},
+        {"name": "Mode", "state": "ready", "text": "KLIFS and GPCRdb labels"},
     ]
     return render_template("about.html", tab="about", stages=strip, grouped=grouped,
                            version=config.VERSION)

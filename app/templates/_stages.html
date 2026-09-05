@@ -1,10 +1,18 @@
-{# The stage strip: seven cells, navigation and progress in one. State is one of
-   done | warn | fail | pending, and drives the 3 px top border's colour. #}
-<div class="stages{% if animate %} animate{% endif %}">
+{# The pipeline as a rail down the side, sticky so it stays in view while you
+   work. It is both the progress indicator and the checklist: the colour of a
+   cell's edge says whether that stage is satisfied, still needed, or optional,
+   and the line under the name says what it is waiting for. #}
+<ol class="rail-list{% if animate %} animate{% endif %}">
   {% for s in stages %}
-  <div class="stage {{ s.state }}"><b>{{ s.name }}</b><span>{{ s.text }}</span></div>
+  <li class="stage {{ s.state }}">
+    <b>{{ s.name }}</b>
+    <span>{{ s.text }}</span>
+  </li>
   {% endfor %}
-  {% if strip_actions %}
-  <div class="strip-actions">{{ strip_actions|safe }}</div>
-  {% endif %}
+</ol>
+<div class="rail-key">
+  <span><i class="ready"></i>ready</span>
+  <span><i class="optional"></i>optional</span>
+  <span><i class="required"></i>needed</span>
 </div>
+{% if strip_actions %}<div class="rail-actions">{{ strip_actions|safe }}</div>{% endif %}
