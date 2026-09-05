@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pixi/
+*.egg-info/
+
+# Runtime state (the droplet keeps its own)
+data/
+gobsmacked.db
+gobsmacked.db-*
+.env
+
+# Session transcripts and scratch
+*.txt.session
+scratch/

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GOBSMACKED · Direction 4: Instrument panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--slate:#1b2433;--panel:#243044;--panel-2:#2c3a50;--line:#3a4a63;--phos:#5de1e6;--amber:#ffb454;--red:#ff5c5c;--green:#7ee2a8;--text:#e8edf5;--muted:#9fb0c7}
+*{box-sizing:border-box}body{margin:0;background:var(--slate);color:var(--text);font-family:'Sora',sans-serif;font-size:14px;line-height:1.5}
+.brand{display:flex;justify-content:space-between;padding:8px 24px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line)}.brand a{color:var(--muted);text-decoration:none}
+.stages{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:18px 24px 0;max-width:1400px;margin:0 auto}
+.stage{background:var(--panel);padding:12px 14px;border-top:3px solid var(--green);font-size:12px}
+.stage b{display:block;font-size:14px;font-weight:600;margin-bottom:2px}.stage span{color:var(--muted)}
+.stage.warn{border-top-color:var(--amber)}
+.deck{max-width:1400px;margin:0 auto;padding:18px 24px 60px;display:grid;grid-template-columns:320px 1fr 340px;gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:18px}
+.card h2{font-size:13px;font-weight:600;color:var(--muted);margin:0 0 14px;letter-spacing:.01em}
+.dial{text-align:center;padding:10px 0 4px}
+.dial svg{width:200px;height:120px}
+.dial .val{font-size:56px;font-weight:800;line-height:1;margin-top:-10px}.dial .lab{color:var(--muted);font-size:12px}
+.gauges{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.g{background:var(--panel-2);border-radius:4px;padding:10px 12px}.g small{display:block;color:var(--muted);font-size:11px}.g b{font-size:20px;font-weight:600}
+.g i{display:block;height:4px;background:var(--line);margin-top:6px;border-radius:2px;overflow:hidden}.g i::after{content:"";display:block;height:100%;width:var(--w);background:var(--phos)}
+.g.a i::after{background:var(--green)}
+.scope{background:#111826;border:1px solid var(--line);height:380px;border-radius:4px;position:relative;display:flex;align-items:center;justify-content:center;background-image:linear-gradient(rgba(93,225,230,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(93,225,230,.06) 1px,transparent 1px);background-size:32px 32px}
+.scope .hud{position:absolute;top:10px;left:12px;font-size:11px;color:var(--phos)}
+.scope .toggles{position:absolute;bottom:10px;left:12px;display:flex;gap:8px}
+.toggles button{background:var(--panel-2);color:var(--text);border:1px solid var(--line);font:inherit;font-size:12px;padding:5px 10px;border-radius:3px;cursor:pointer}
+.toggles button[aria-pressed=true]{border-color:var(--phos);color:var(--phos)}
+.trace{margin-top:18px}
+.switches{list-style:none;margin:0;padding:0}
+.switches li{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.led{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);display:inline-block;margin-right:8px}
+.led.off{background:var(--line);box-shadow:none}.led.amber{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.twin{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:12px;font-size:12px}
+.twin div{background:var(--panel-2);padding:8px 10px;border-radius:4px}.twin b{display:block;font-size:14px;font-weight:600;color:var(--phos)}
+.verdict{margin-top:14px;padding:10px 12px;background:rgba(126,226,168,.12);border:1px solid var(--green);border-radius:4px;color:var(--green);font-weight:600}
+@media(max-width:1100px){.deck{grid-template-columns:1fr}.stages{grid-template-columns:repeat(4,1fr)}}
+</style></head>
+<body>
+<div class="brand"><a href="https://marcdeller.com">Marc C. Deller, D.Phil.</a><span>GOBSMACKED · gs_20260905_ab12cd</span><a href="mailto:marc@marcdeller.com">marc@marcdeller.com</a></div>
+<div class="stages">
+  <div class="stage"><b>Fetch</b><span>AFDB AF-P00533-F1</span></div><div class="stage"><b>Annotate</b><span>Pfam PK_Tyr · KLIFS 85</span></div><div class="stage"><b>Fold</b><span>skipped</span></div><div class="stage"><b>Dock</b><span>hybrid · 10 poses · 6 min</span></div><div class="stage"><b>MD</b><span>1 ns · CUDA · 14 min</span></div><div class="stage warn"><b>Verify</b><span>1M17 · pocket-superposed</span></div><div class="stage"><b>Mode</b><span>Type I both</span></div>
+</div>
+<main class="deck">
+  <section class="card"><h2>Score</h2>
+    <div class="dial"><svg viewBox="0 0 200 120"><path d="M20 110 A80 80 0 0 1 180 110" fill="none" stroke="#3a4a63" stroke-width="14" stroke-linecap="round"/><path d="M20 110 A80 80 0 0 1 164 62" fill="none" stroke="#5de1e6" stroke-width="14" stroke-linecap="round"/><text x="100" y="105" text-anchor="middle" fill="#e8edf5" font-size="44" font-weight="800">B</text></svg><div class="val">82</div><div class="lab">GOBSMACK score, validity gate passed</div></div>
+    <div class="gauges">
+      <div class="g" style="--w:72%"><small>Ligand RMSD</small><b>1.4 Å</b><i></i></div><div class="g" style="--w:70%"><small>Pocket Cα RMSD</small><b>0.9 Å</b><i></i></div>
+      <div class="g" style="--w:78%"><small>χ1 agreement</small><b>0.78</b><i></i></div><div class="g" style="--w:62%"><small>PLIP overlap</small><b>0.62</b><i></i></div>
+      <div class="g a" style="--w:92%"><small>Drift, last 200 ps</small><b>0.4 Å</b><i></i></div><div class="g" style="--w:65%"><small>MD rescue</small><b>+0.3 Å</b><i></i></div>
+    </div>
+  </section>
+  <section class="card"><h2>Scope</h2>
+    <div class="scope"><div class="hud">pocket Cα superposition · 14 atoms · TM 0.97</div>
+      <svg width="440" height="260" viewBox="0 0 440 260" fill="none" stroke-width="5" stroke-linecap="round"><path d="M60 200 L110 150 L160 170 L210 120 L260 140 L310 90" stroke="#9fb0c7" opacity=".5"/><path d="M62 196 L112 146 L162 166 L214 116 L262 136 L314 86" stroke="#5de1e6"/><path d="M66 194 L114 148 L164 164 L212 118 L266 134 L316 88" stroke="#ffb454"/><path d="M150 60 L190 80 L230 60 L270 80" stroke="#5de1e6" stroke-width="7"/><path d="M152 66 L192 86 L236 64 L272 86" stroke="#ffb454" stroke-width="7" opacity=".85"/></svg>
+      <div class="toggles"><button aria-pressed="false">Model</button><button aria-pressed="true">MD final</button><button aria-pressed="true">1M17</button><button aria-pressed="false">Apo ref</button></div></div>
+    <div class="trace"><h2>Ligand RMSD to crystal, ps</h2>
+      <svg width="100%" height="120" viewBox="0 0 700 120" preserveAspectRatio="none"><line x1="0" y1="70" x2="700" y2="70" stroke="#ff5c5c" stroke-dasharray="6 6"/><path d="M0 30 C70 60,100 45,160 65 S300 85,380 72 S560 62,700 70" fill="none" stroke="#5de1e6" stroke-width="2.5"/><text x="6" y="64" font-size="11" fill="#ff5c5c">2 Å</text></svg></div>
+  </section>
+  <section class="card"><h2>Mode: kinase switches</h2>
+    <ul class="switches">
+      <li><span><i class="led"></i>DFG</span><span>in</span></li><li><span><i class="led"></i>αC helix</span><span>in</span></li><li><span><i class="led"></i>Hinge H-bonds</span><span>2 (Met793)</span></li><li><span><i class="led"></i>Gatekeeper contact</span><span>Thr790</span></li><li><span><i class="led off"></i>Back pocket II</span><span>empty</span></li><li><span><i class="led amber"></i>Leu858 contact</span><span>lost in prediction</span></li>
+    </ul>
+    <div class="twin"><div>Predicted<b>Type I</b></div><div>Crystal 1M17<b>Type I</b></div></div>
+    <div class="verdict">Binding mode matches</div>
+    <p style="color:var(--muted);font-size:12px;margin:14px 0 0">GPCR targets show TM3–TM6 distance, NPxxY RMSD and toggle-switch χ here instead, with orthosteric / vestibule / intracellular site labels from GPCRdb numbering.</p>
+  </section>
+</main>
+</body></html>

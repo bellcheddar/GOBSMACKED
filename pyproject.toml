@@ -1,0 +1,51 @@
+# Droplet application dependencies ONLY.
+#
+# The run bundle is a separate world: it needs torch, ESMFold, PandaDock and
+# OpenMM, none of which fit on a 3.8 GB CPU droplet. Its environment is
+# bundle_template/pixi.toml and the two must never be merged.
+[project]
+name = "gobsmacked"
+version = "1.0.0"
+description = "Ground-truth Overlay for Binding Sites, Modes And Complex Kinetics/Dynamics"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Marc C. Deller", email = "marc@marcdeller.com" }]
+
+dependencies = [
+  "flask>=3.0",
+  "gunicorn>=21.2",
+  "jinja2>=3.1",
+  "requests>=2.31",
+  "tenacity>=8.2",
+  "python-dotenv>=1.0",
+  "pyyaml>=6.0",
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "biotite>=0.40",
+  "tmtools>=0.2",
+  "rdkit>=2024.3",
+  "mdtraj>=1.9",
+  "gemmi>=0.6.5",
+  # PLIP is GPL-2.0 and is invoked as a subprocess only, never imported, so
+  # GOBSMACKED's own MIT licence is unaffected. It is not vendored into the
+  # run bundle for the same reason.
+  "plip>=2.3",
+  "pandamap>=0.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://gobsmacked.mdeller.com"
+Repository = "https://github.com/bellcheddar/GOBSMACKED"
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+# pip install -e is a no-op on this machine (site.py skips hidden .pth files
+# under a UF_HIDDEN directory), so the package is found by path, not install.
+pythonpath = ["."]
+testpaths = ["tests"]
