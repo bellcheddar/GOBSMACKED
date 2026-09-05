@@ -161,3 +161,15 @@ def test_unk_is_recognised_as_the_ligand(tmp_path):
     assert not is_ligand_residue(residue("ALA"))
     assert not is_ligand_residue(residue("MSE"))
     assert not is_ligand_residue(residue("HOH"))
+
+
+def test_validity_is_checked_in_the_frame_the_box_is_defined_in(egfr_card):
+    """The docking box comes from the campaign, in the model's own coordinate
+    frame. Checking "ligand centroid inside the box" on a copy superposed onto
+    the crystal fails every time, and a validity failure caps the composite at
+    40, so the whole scorecard silently collapses."""
+    _, card = egfr_card
+    checks = {c["key"]: c["pass"] for c in card["scorecard"]["validity"]["checks"]}
+    assert "inside_box" in checks, "the box check did not run"
+    assert checks["inside_box"] is True
+    assert card["scorecard"]["validity"]["capped"] is False

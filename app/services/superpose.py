@@ -470,3 +470,81 @@ def tm_score(model: Chain, reference: Chain, mapping: dict[int, int]) -> Optiona
         return round(float(max(res.tm_norm_chain1, res.tm_norm_chain2)), 3)
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Putting the structures in one frame
+# ---------------------------------------------------------------------------
+
+def align_onto(source_path: str | Path, target_path: str | Path,
+               source_chain: Optional[str] = None, target_chain: Optional[str] = None,
+               target_residues: Optional[list[int]] = None) -> Optional[dict[str, Any]]:
+    """Rotation and translation taking `source` onto `target`, on shared Ca atoms.
+
+    Restricted to `target_residues` when given, which is how the pocket becomes
+    the basis. Falls back to every alignable Ca when too few pocket atoms pair,
+    so a structure is never left in its own frame just because the pocket was
+    poorly resolved.
+    """
+    source = load_chain(source_path, source_chain)
+    target = load_chain(target_path, target_chain)
+    if source is None or target is None:
+        return None
+    mapping = align_numbering(source, target)          # source number -> target number
+    if not mapping:
+        return None
+
+    def pairs_for(numbers: Optional[set[int]]):
+        mob, tgt = [], []
+        for s_num, t_num in mapping.items():
+            if numbers is not None and t_num not in numbers:
+                continue
+            a, b = source.ca(s_num), target.ca(t_num)
+            if a is not None and b is not None:
+                mob.append(a)
+                tgt.append(b)
+        return mob, tgt
+
+    basis = "pocket Ca"
+    mob, tgt = pairs_for(set(target_residues) if target_residues else None)
+    if len(mob) < 4:
+        basis = "all shared Ca"
+        mob, tgt = pairs_for(None)
+    if len(mob) < 4:
+        return None
+    rot, trans = kabsch(np.array(mob), np.array(tgt))
+    fitted = rmsd(apply_transform(np.array(mob), rot, trans), np.array(tgt))
+    return {"rotation": rot, "translation": trans, "atoms": len(mob), "basis": basis,
+            "rmsd": round(fitted, 3) if fitted is not None else None}
+
+
+def write_transformed(source_path: str | Path, dest: Path, rot, trans,
+                      chain: Optional[str] = None) -> Path:
+    """Write `source` with every atom moved by (rot, trans).
+
+    This is what actually puts the states in one frame. Computing the transform
+    and then handing the viewer the untransformed files leaves three structures
+    scattered across the scene, each correct in its own coordinate system and
+    the overlay meaningless: exactly what the first real run showed.
+    """
+    st = gemmi.read_structure(str(source_path))
+    st.setup_entities()
+    st.remove_alternative_conformations()
+    if chain:
+        for model in st:
+            for name in [c.name for c in model if c.name != chain]:
+                model.remove_chain(name)
+    rot = np.asarray(rot)
+    trans = np.asarray(trans)
+    for model in st:
+        for ch in model:
+            for res in ch:
+                for atom in res:
+                    x, y, z = apply_transform(
+                        np.array([[atom.pos.x, atom.pos.y, atom.pos.z]]), rot, trans)[0]
+                    atom.pos = gemmi.Position(float(x), float(y), float(z))
+    st.setup_entities()
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(st.make_pdb_string())
+    return dest

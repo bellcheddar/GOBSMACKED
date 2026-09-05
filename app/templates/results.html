@@ -21,11 +21,8 @@
 {% endblock %}
 
 {% block content %}
-<main class="deck" id="scorecard">
-
-  <!-- Left column: the score -->
-  <div class="col">
-    <section class="card">
+<main class="deck results" id="scorecard">
+    <section class="card span-4">
       <h2>Score</h2>
       {% if sc.score is not none %}
       <div class="dial">
@@ -72,7 +69,28 @@
       {% endif %}
     </section>
 
-    <section class="card">
+    <section class="card span-8" id="complex">
+      <h2>Complex</h2>
+      <div class="scope" id="complex-scope">
+        <div class="viewer" id="complex-viewer"></div>
+        <div class="hud" id="complex-hud">MD-final complex</div>
+        <div class="toggles" id="complex-toggles">
+          <button data-state="pose1" aria-pressed="false">Pose 1</button>
+          <button data-state="minimised" aria-pressed="false">Minimised</button>
+          <button data-state="md_final" aria-pressed="true">MD final</button>
+        </div>
+      </div>
+      <p class="note" id="interaction-legend" style="margin-top:12px"></p>
+      {% if card.pandamap and card.pandamap.png %}
+      <h3>PandaMap, MD-final</h3>
+      <img src="{{ url_for('runs.run_file', job_id=row['job_id'], name=card.pandamap.png) }}"
+           alt="2D interaction map of the relaxed complex" style="width:100%;border-radius:4px">
+      <p class="note">PandaMap's empirical estimate: {{ card.pandamap.dg }} kcal/mol
+        ({{ card.pandamap.interpretation }}). {{ card.pandamap.note }}</p>
+      {% endif %}
+    </section>
+
+    <section class="card span-4">
       <h2>Run</h2>
       <ul class="switches">
         <li><span>Protein</span><span>{{ row['uniprot'] or 'sequence' }}</span></li>
@@ -97,32 +115,8 @@
       <ul class="warnings">{% for w in card.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
       {% endif %}
     </section>
-  </div>
 
-  <!-- Centre: structures and traces -->
-  <div class="col">
-    <section class="card" id="complex">
-      <h2>Complex</h2>
-      <div class="scope" id="complex-scope">
-        <div class="viewer" id="complex-viewer"></div>
-        <div class="hud" id="complex-hud">MD-final complex</div>
-        <div class="toggles" id="complex-toggles">
-          <button data-state="pose1" aria-pressed="false">Pose 1</button>
-          <button data-state="minimised" aria-pressed="false">Minimised</button>
-          <button data-state="md_final" aria-pressed="true">MD final</button>
-        </div>
-      </div>
-      <p class="note" id="interaction-legend" style="margin-top:12px"></p>
-      {% if card.pandamap and card.pandamap.png %}
-      <h3>PandaMap, MD-final</h3>
-      <img src="{{ url_for('runs.run_file', job_id=row['job_id'], name=card.pandamap.png) }}"
-           alt="2D interaction map of the relaxed complex" style="width:100%;border-radius:4px">
-      <p class="note">PandaMap's empirical estimate: {{ card.pandamap.dg }} kcal/mol
-        ({{ card.pandamap.interpretation }}). {{ card.pandamap.note }}</p>
-      {% endif %}
-    </section>
-
-    <section class="card" id="overlay">
+    <section class="card span-8" id="overlay">
       <h2>Overlay</h2>
       <div class="scope" id="overlay-scope">
         <div class="viewer" id="overlay-viewer"></div>
@@ -156,39 +150,7 @@
       {% endif %}
     </section>
 
-    <section class="card" id="dynamics">
-      <h2>Dynamics</h2>
-      {% if card.dynamics.frames %}
-      <div class="plot" id="plot-ligand"></div>
-      <div class="plot" id="plot-protein"></div>
-      <div class="plot" id="plot-rmsf"></div>
-      <div class="plot" id="plot-volume"></div>
-      <div class="plot tall" id="plot-contacts"></div>
-      {% else %}
-      <p class="note">This archive holds no trajectory summary, so there are no traces to draw.</p>
-      {% endif %}
-    </section>
-
-    <section class="card" id="report">
-      <h2>Report</h2>
-      <p class="note">A printable page with the scorecard, the mode verdict, the interaction table
-        and the key traces. Printing preserves the panel colours.</p>
-      <div class="row">
-        <a class="btn" href="{{ url_for('runs.report', job_id=row['job_id']) }}">Open report</a>
-        <a class="btn" href="{{ url_for('runs.download_results', job_id=row['job_id']) }}">Download all</a>
-      </div>
-      <h3>Engine versions</h3>
-      <ul class="switches">
-        {% for name, version in (card.manifest.engine_versions or {}).items() %}
-        <li><span>{{ name }}</span><span>{{ version }}</span></li>
-        {% endfor %}
-      </ul>
-    </section>
-  </div>
-
-  <!-- Right: the mode switches -->
-  <div class="col" id="mode">
-    <section class="card">
+    <section class="card span-6" id="mode">
       <h2>Mode: {{ card.modes.family }} switches</h2>
       {% set p = card.modes.predicted %}
       {% set r = card.modes.reference %}
@@ -237,7 +199,7 @@
     </section>
 
     {% if card.interaction_table %}
-    <section class="card">
+    <section class="card span-6">
       <h2>Interactions</h2>
       <div class="scroll" style="max-height:460px;overflow-y:auto">
         <table>
@@ -261,7 +223,35 @@
         {{ card.jaccard.md_final if card.jaccard.md_final is not none else 'n/a' }}.</p>
     </section>
     {% endif %}
-  </div>
+
+    <section class="card span-12" id="dynamics">
+      <h2>Dynamics</h2>
+      {% if card.dynamics.frames %}
+      <div class="plot" id="plot-ligand"></div>
+      <div class="plot" id="plot-protein"></div>
+      <div class="plot" id="plot-rmsf"></div>
+      <div class="plot" id="plot-volume"></div>
+      <div class="plot tall" id="plot-contacts"></div>
+      {% else %}
+      <p class="note">This archive holds no trajectory summary, so there are no traces to draw.</p>
+      {% endif %}
+    </section>
+
+    <section class="card span-12" id="report">
+      <h2>Report</h2>
+      <p class="note">A printable page with the scorecard, the mode verdict, the interaction table
+        and the key traces. Printing preserves the panel colours.</p>
+      <div class="row">
+        <a class="btn" href="{{ url_for('runs.report', job_id=row['job_id']) }}">Open report</a>
+        <a class="btn" href="{{ url_for('runs.download_results', job_id=row['job_id']) }}">Download all</a>
+      </div>
+      <h3>Engine versions</h3>
+      <ul class="switches">
+        {% for name, version in (card.manifest.engine_versions or {}).items() %}
+        <li><span>{{ name }}</span><span>{{ version }}</span></li>
+        {% endfor %}
+      </ul>
+    </section>
 </main>
 {% endblock %}
 

@@ -207,6 +207,57 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
     model_geo = geometry.get("model") or {}
     card["displacements"] = final.get("displacements") or []
 
+    # --- put every state in one coordinate frame ---------------------------
+    #
+    # Until this point each file is correct in its own frame and none of them
+    # agree: the crystal is in the crystal's frame, the AlphaFold model is in
+    # AlphaFold's, and OpenMM has translated the complex into its periodic box.
+    # Handing those to the viewer draws three structures scattered across the
+    # scene. Everything below, including PLIP and the 2D map, runs on the
+    # superposed copies, so the coordinates the page shows are the coordinates
+    # the numbers were measured on.
+    states = {"model": model_apo, "pose1": pose1, "minimised": minimised, "md_final": md_final}
+    # Kept because the docking box is defined in the model's own frame: the
+    # inside-the-box check has to be made there, not on a superposed copy.
+    original_paths = dict(states)
+    target = reference_pdb or model_apo
+    target_chain = reference.get("chain") if reference_pdb else None
+    pocket_target = final.get("pocket_residues_reference") if reference_pdb else None
+    superposed: dict[str, Any] = {}
+    aligned_paths: dict[str, Any] = {}
+    for label, path in states.items():
+        if path is None:
+            continue
+        if reference_pdb is None and label == "model":
+            aligned_paths[label] = path      # everything else is aligned onto it
+            superposed[label] = {"file": Path(path).name, "basis": "reference frame"}
+            continue
+        fit = sup_svc.align_onto(path, target, target_chain=target_chain,
+                                 target_residues=pocket_target)
+        if fit is None:
+            aligned_paths[label] = path
+            continue
+        dest = results.root / f"superposed_{label}.pdb"
+        sup_svc.write_transformed(path, dest, fit["rotation"], fit["translation"])
+        aligned_paths[label] = dest
+        superposed[label] = {"file": dest.name, "atoms": fit["atoms"],
+                             "basis": fit["basis"], "rmsd": fit["rmsd"]}
+    card["superposed"] = superposed
+    card["superposed_onto"] = (card["reference"].get("pdb_id") if reference_pdb
+                               else "the prepared model")
+
+    # From here on, the aligned copies are the files everything reads.
+    model_apo = aligned_paths.get("model", model_apo)
+    pose1 = aligned_paths.get("pose1", pose1)
+    minimised = aligned_paths.get("minimised", minimised)
+    md_final = aligned_paths.get("md_final", md_final)
+    ligand_names = {state: _ligand_resname(path) for state, path in
+                    (("pose1", pose1), ("minimised", minimised), ("md_final", md_final))
+                    if path is not None}
+    ligand_resname = ligand_names.get("md_final") or ligand_names.get("pose1")
+    card["ligand_resname"] = ligand_resname
+    card["ligand_resnames"] = ligand_names
+
     # --- interactions ----------------------------------------------------
     fingerprints: dict[str, Any] = {}
     jaccards: dict[str, Optional[float]] = {}
@@ -282,9 +333,10 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
     # --- scorecard -------------------------------------------------------
     ligand_rmsd = _best(final.get("ligand_rmsd"), first.get("ligand_rmsd"))
     validity_on = "md_final" if md_final else "pose1"
+    validity_path = original_paths.get(validity_on)
     validity = score_svc.check_validity(
-        md_final or pose1, ligand.get("smiles", ""), pocket.get("center"), pocket.get("box"),
-        ligand_ccd=ligand_names.get(validity_on)) if (md_final or pose1) else {}
+        validity_path, ligand.get("smiles", ""), pocket.get("center"), pocket.get("box"),
+        ligand_ccd=ligand_names.get(validity_on)) if validity_path else {}
     card["scorecard"] = score_svc.composite({
         "ligand_rmsd": ligand_rmsd,
         "plip_jaccard": _best(jaccards.get("md_final"), jaccards.get("pose1"), lowest=False),

@@ -1,3 +1,6 @@
+# macOS writes one of these into any directory Finder has opened.
+.DS_Store
+
 # Python
 __pycache__/
 *.py[cod]
@@ -17,3 +20,16 @@ scratch/
 
 # Fixture inputs: regenerable by tests/fixtures/build_fixtures.py
 tests/fixtures/_structures/
+
+# Generated from README.md by the readme forge, and regenerated on demand.
+# The canonical document is README.md; these are build products.
+README.html
+README.preview.html
+README.polished.md
+elementor-widget-markdown.css
+readme_meta.json
+
+# The build specification this app was written from. Kept locally, not shipped:
+# the README is what describes the app now, and the spec has been overtaken by
+# it in several places.
+GOBSMACKED_BUILD_SPEC.md

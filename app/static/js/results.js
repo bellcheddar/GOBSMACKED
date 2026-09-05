@@ -9,6 +9,16 @@
 
   function fileUrl(name) { return "/runs/" + jobId + "/file/" + name; }
 
+  /* The superposed copy of a state, which is what every view should draw: the
+     raw files are each correct in their own frame and none of them agree. */
+  function stateFile(state) {
+    var entry = (card.superposed || {})[state];
+    if (entry && entry.file) return entry.file;
+    return { model: "model_apo.pdb", pose1: "complex_pose1.pdb",
+             minimised: "complex_min.pdb", md_final: "complex_md_final.pdb",
+             reference: "reference.pdb", apo: "apo_reference.pdb" }[state];
+  }
+
   /* Run `action` after Mol* has finished its own post-load camera work. */
   function settle(action) {
     requestAnimationFrame(function () { window.setTimeout(action, 400); });
@@ -26,7 +36,7 @@
     if (!host) return;
     GobViewer.create(host).then(function (scope) {
       complexScope = scope;
-      return scope.load("md_final", fileUrl("complex_md_final.pdb"),
+      return scope.load("md_final", fileUrl(stateFile("md_final")),
                         { primary: true, color: GobViewer.COLOURS.md_final });
     }).then(function () {
       // Mol*'s own preset resets the camera to the whole structure after the
@@ -46,14 +56,12 @@
     document.querySelectorAll("#complex-toggles button").forEach(function (button) {
       button.addEventListener("click", function () {
         var state = button.getAttribute("data-state");
-        var files = { pose1: "complex_pose1.pdb", minimised: "complex_min.pdb",
-                      md_final: "complex_md_final.pdb" };
         document.querySelectorAll("#complex-toggles button").forEach(function (other) {
           other.setAttribute("aria-pressed", other === button ? "true" : "false");
         });
         if (!complexScope) return;
         complexScope.clearAll().then(function () {
-          return complexScope.load(state, fileUrl(files[state]),
+          return complexScope.load(state, fileUrl(stateFile(state)),
                                    { primary: true, color: GobViewer.COLOURS[state] || GobViewer.COLOURS.md_final });
         }).then(function () {
           settle(function () { complexScope.focusLigand(state); });
@@ -107,7 +115,7 @@
     if (!host) return;
     GobViewer.create(host).then(function (scope) {
       overlayScope = scope;
-      var work = scope.load("md_final", fileUrl("complex_md_final.pdb"),
+      var work = scope.load("md_final", fileUrl(stateFile("md_final")),
                             { primary: true, color: GobViewer.COLOURS.md_final });
       if (card.reference && card.reference.pdb_id) {
         work = work.then(function () {
@@ -118,8 +126,11 @@
       return work;
     }).then(function () {
       var g = (card.geometry || {}).md_final || {};
+      var fit = (card.superposed || {}).md_final || {};
       document.getElementById("overlay-hud").textContent =
-        "pocket Ca superposition · " + (g.pocket_ca_atoms || 0) + " atoms" +
+        (fit.basis || "pocket Ca") + " superposition onto " + (card.superposed_onto || "the model") +
+        " · " + (fit.atoms || g.pocket_ca_atoms || 0) + " atoms" +
+        (fit.rmsd !== undefined && fit.rmsd !== null ? " · fit " + fit.rmsd + " A" : "") +
         (g.tm_score ? " · TM " + g.tm_score : "");
       // The reference is drawn in the crystal's own frame, so the overlay is
       // only meaningful because the bundle's structures were written in it too.
@@ -143,9 +154,7 @@
         if (overlayScope.has(state)) {
           overlayScope.setVisible(state, !pressed);
         } else if (!pressed) {
-          var files = { model: "model_apo.pdb", md_final: "complex_md_final.pdb",
-                        reference: "reference.pdb", apo: "apo_reference.pdb" };
-          overlayScope.load(state, fileUrl(files[state]), { color: GobViewer.COLOURS[state] });
+          overlayScope.load(state, fileUrl(stateFile(state)), { color: GobViewer.COLOURS[state] });
         }
       });
     });

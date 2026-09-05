@@ -407,7 +407,21 @@
           camera: { helper: { axes: { name: "off", params: {} } } },
         });
       } catch (err) { /* an older build without these props still renders */ }
-      return new Scope(viewer, host);
+      var scope = new Scope(viewer, host);
+      // Mol* sizes its canvas once. In a grid whose rows stretch, the container
+      // changes size after layout and on every window resize, and without this
+      // the canvas keeps its first size and spills out of the panel.
+      var nudge = function () {
+        try { viewer.plugin.handleResize(); } catch (err) { /* nothing to do */ }
+      };
+      window.addEventListener("resize", nudge);
+      if (window.ResizeObserver) {
+        var observer = new ResizeObserver(nudge);
+        observer.observe(host);
+        scope.observer = observer;
+      }
+      requestAnimationFrame(nudge);
+      return scope;
     });
   }
 

@@ -57,7 +57,7 @@ a:hover { text-decoration: underline; }
 /* --- Stage strip ------------------------------------------------------ */
 .stages {
   display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
-  padding: 18px 24px 0; max-width: 1400px; margin: 0 auto;
+  padding: 18px 24px 0; max-width: var(--deck-max); margin: 0 auto;
 }
 .stage {
   background: var(--panel); padding: 12px 14px; font-size: 12px;
@@ -72,8 +72,10 @@ a:hover { text-decoration: underline; }
 .stages .strip-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; }
 
 /* --- Deck ------------------------------------------------------------- */
+:root { --deck-max: 1680px; }
+
 .deck {
-  max-width: 1400px; margin: 0 auto; padding: 18px 24px 60px;
+  max-width: var(--deck-max); margin: 0 auto; padding: 18px 24px 60px;
   display: grid; grid-template-columns: 320px 1fr 340px; gap: 18px;
   align-items: start;
 }
@@ -81,10 +83,28 @@ a:hover { text-decoration: underline; }
 .deck.single { grid-template-columns: 1fr; }
 .col { display: flex; flex-direction: column; gap: 18px; }
 
+/* The results deck is one twelve-column grid rather than three independent
+   columns. Independent columns end at different heights, which is where the
+   ragged bottoms and the large empty block on the right came from: each column
+   was as tall as its own content and nothing lined up. Here every panel is a
+   direct grid child, so panels sharing a row share a height and the deck has no
+   holes in it. */
+.deck.results { grid-template-columns: repeat(12, 1fr); align-items: stretch; }
+.span-4  { grid-column: span 4; }
+.span-6  { grid-column: span 6; }
+.span-8  { grid-column: span 8; }
+.span-12 { grid-column: span 12; }
+
 .card {
   background: var(--panel); border: 1px solid var(--line);
   border-radius: 6px; padding: 18px;
+  /* A column, so a scope or a plot can take the slack when the row it sits in
+     is taller than its own content. Without this the panel stretches and its
+     contents sit at the top with a gap underneath. */
+  display: flex; flex-direction: column;
+  min-width: 0;
 }
+.card > .scroll, .card > table { min-width: 0; }
 .card h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 14px; }
 .card h3 { font-size: 13px; font-weight: 600; color: var(--text); margin: 18px 0 8px; }
 .card p { margin: 0 0 10px; }
@@ -97,7 +117,7 @@ a:hover { text-decoration: underline; }
   position: sticky; top: 0; z-index: 20;
   display: flex; gap: 18px; padding: 10px 24px;
   background: var(--slate); border-bottom: 1px solid var(--line);
-  max-width: 1400px; margin: 0 auto; font-size: 13px;
+  max-width: var(--deck-max); margin: 0 auto; font-size: 13px;
 }
 .subnav a { color: var(--muted); }
 .subnav a.current, .subnav a:hover { color: var(--phos); text-decoration: none; }
@@ -124,13 +144,19 @@ a:hover { text-decoration: underline; }
 /* --- Scope (Mol*) ----------------------------------------------------- */
 .scope {
   background: #111826; border: 1px solid var(--line); border-radius: 4px;
-  height: 460px; position: relative; overflow: hidden;
+  /* Grows into whatever height the row gives it rather than being pinned to
+     460 px, which is what left a scope sticking out of a short panel and a gap
+     under a tall one. */
+  flex: 1 1 auto; min-height: 380px; position: relative; overflow: hidden;
   background-image:
     linear-gradient(rgba(93, 225, 230, .06) 1px, transparent 1px),
     linear-gradient(90deg, rgba(93, 225, 230, .06) 1px, transparent 1px);
   background-size: 32px 32px;
 }
-.scope.short { height: 340px; }
+.scope.short { min-height: 300px; flex: 0 0 300px; }
+/* The interaction legend and the 2D map sit under the scope, so the scope must
+   not eat the whole panel on a tall row. */
+.card .scope + * { flex: 0 0 auto; }
 .scope .viewer { position: absolute; inset: 0; }
 .scope .hud {
   position: absolute; top: 10px; left: 12px; z-index: 5;
@@ -308,8 +334,10 @@ pre.cmd {
 }
 
 /* --- Narrow ----------------------------------------------------------- */
-@media (max-width: 1100px) {
+@media (max-width: 1250px) {
   .deck, .deck.wide { grid-template-columns: 1fr; }
+  .deck.results { grid-template-columns: 1fr; }
+  .span-4, .span-6, .span-8, .span-12 { grid-column: 1 / -1; }
   .stages { grid-template-columns: repeat(4, 1fr); }
 }
 @media (max-width: 640px) {
