@@ -31,6 +31,11 @@ RESTRAINT_STEPS = 5
 
 
 def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
+    # openff-toolkit pulls in torch and the whole SMIRNOFF machinery, which on a
+    # cold cache and a busy machine took sixteen minutes to import on the first
+    # real run: long enough to look like a hang with nothing on screen. Say what
+    # is happening before paying for it.
+    log("md: importing OpenMM and the OpenFF toolkit (slow on a cold cache)")
     import numpy as np
     import openmm
     from openmm import app, unit

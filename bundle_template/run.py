@@ -80,7 +80,11 @@ def main(argv=None) -> int:
             print(f"  {name:<11} {state}")
         return 0
 
-    minutes = sum(ESTIMATE_MIN[name] for name in plan)
+    # Folding is the big term and is skipped whenever the bundle carries a
+    # model, which is the usual case. Counting it regardless made the printed
+    # estimate wrong by three minutes on every ordinary run.
+    minutes = sum(ESTIMATE_MIN[name] for name in plan
+                  if not (name == "fold" and (HERE / "model_apo.pdb").exists()))
     log(f"GOBSMACKED {job_id}: {len(plan)} stages to run ({', '.join(plan) or 'nothing'}), "
         f"roughly {minutes} minutes on a consumer GPU")
     if not plan:
