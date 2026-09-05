@@ -72,7 +72,7 @@ def test_bundle_is_written_and_is_complete(client, app):
     with tarfile.open(archive) as tar:
         names = {n.split("/", 1)[-1] for n in tar.getnames()}
         campaign = yaml.safe_load(tar.extractfile(f"run_bundle_{job_id}/campaign.yaml").read())
-    for needed in ("run.py", "pixi.toml", "campaign.yaml", "README.md",
+    for needed in ("run.py", "run.sh", "pixi.toml", "pixi.lock", "campaign.yaml", "README.md",
                    "gobsmacked_run/fold.py", "gobsmacked_run/prep.py",
                    "gobsmacked_run/dock.py", "gobsmacked_run/md.py",
                    "gobsmacked_run/summarise.py", "gobsmacked_run/schema.py"):
@@ -236,7 +236,7 @@ def test_the_run_command_is_one_line_and_self_contained(client, app):
         "-f, or an HTTP error is piped into tar and reported as a gzip problem"
     assert "| tar xz" in command
     assert f"cd run_bundle_{body['job_id']}" in command
-    assert command.endswith("pixi run gobsmacked")
+    assert command.endswith("./run.sh")
     # An absolute URL, or pasting it into a terminal fetches nothing.
     assert "http://localhost/runs/" in command or "https://" in command
     assert body["results_path"].endswith("results/results.tar.gz")
@@ -262,3 +262,24 @@ def test_a_public_bundle_command_carries_no_token(client):
         "pocket": {"residues": ["A:1"], "center": [0, 0, 0], "box": [18, 18, 18]}})
     body = response.get_json()
     assert "token=" not in body["command"]
+
+
+def test_the_bundle_carries_its_lock_and_an_executable_bootstrap(client, app):
+    """One step means no prerequisites: run.sh installs pixi if the machine has
+    not got it, and pixi.lock means no solve, so the environment is the one this
+    was tested with rather than whatever resolves today."""
+    from app import config
+
+    response = client.post("/api/bundle", json={
+        "protein": {"sequence": "MRPSGTAGAALLALL", "chain": "A"},
+        "ligand": {"name": "x", "smiles": "CCO"},
+        "pocket": {"residues": ["A:1"], "center": [0, 0, 0], "box": [18, 18, 18]}})
+    job_id = response.get_json()["job_id"]
+    with tarfile.open(config.RUNS_DIR / job_id / f"run_bundle_{job_id}.tar.gz") as tar:
+        members = {m.name.split("/", 1)[-1]: m for m in tar.getmembers()}
+        lock = tar.extractfile(members["pixi.lock"]).read().decode()
+    # A tar that loses the executable bit turns one step back into two.
+    assert members["run.sh"].mode & 0o111, "run.sh is not executable inside the archive"
+    assert "platforms:" in lock and "osx-arm64" in lock and "linux-64" in lock, \
+        "the lock must cover both platforms the bundle claims to support"
+    assert len(lock) > 100_000, "that lock looks empty"

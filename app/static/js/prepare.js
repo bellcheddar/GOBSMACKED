@@ -598,22 +598,24 @@
       "<pre class='cmd' id='run-command'>" + escapeHtml(data.command) + "</pre>" +
       "<div class='row'><button class='small' id='copy-command'>Copy command</button>" +
       "<a class='btn small fixed' href='" + data.bundle_url + "'>Or download the file</a></div>" +
-      "<p class='note'>One line, and it does the lot: fetches the bundle, unpacks it, installs " +
-      "everything it needs the first time, and runs all five stages (fold, prep, dock, MD, " +
-      "summarise). Expect roughly <b>" + data.estimate_minutes + " minutes</b> on a consumer " +
-      "GPU, most of it the molecular dynamics. It prints its own estimate before it starts.</p>" +
+      "<p class='note'>One line, and it does the lot: fetches the bundle, unpacks it, and runs " +
+      "<code>run.sh</code>, which installs the environment from the lock file shipped inside " +
+      "the bundle and then runs all five stages (fold, prep, dock, MD, summarise). Expect " +
+      "roughly <b>" + data.estimate_minutes + " minutes</b> on a consumer GPU, most of it the " +
+      "molecular dynamics, plus a one-time environment download of about 2.5 GB.</p>" +
 
-      "<h3>2. If you do not have pixi</h3>" +
-      "<pre class='cmd'>" + escapeHtml(data.pixi_install) + "</pre>" +
-      "<p class='note'>pixi manages the run's environment so nothing is installed system-wide. " +
-      "Reopen the terminal afterwards, then run the command above. Nothing else is needed: no " +
-      "conda environment, no CUDA setup, no Python of your own.</p>" +
+      "<h3>2. What you need</h3>" +
+      "<p class='note'>" + data.needs + " No conda environment, no CUDA setup, no Python of " +
+      "your own, and nothing installed system-wide: the environment lives inside the bundle " +
+      "directory and is pinned by <code>pixi.lock</code>, so it is the same environment this " +
+      "run was tested with rather than whatever resolves today.</p>" +
 
       "<h3>3. Bring the results back</h3>" +
       "<p class='note'>The run writes <code>" + data.results_path + "</code>. Upload that file " +
       "on the <a href='" + data.analyze_url + "'>Analyze tab</a> and this page scores it against " +
-      "the reference. If a stage fails, fix the cause and rerun the same command: finished " +
-      "stages are skipped, so it picks up where it stopped.</p>" +
+      "the reference. If a stage fails, fix the cause and run <code>./run.sh</code> again: " +
+      "finished stages are skipped, so it picks up where it stopped. <code>./run.sh --list</code> " +
+      "shows what would run.</p>" +
 
       "<h3>Owner key</h3>" +
       "<p class='note'>Shown once. It is stored in this browser and travels inside the bundle, " +

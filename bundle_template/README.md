@@ -5,25 +5,31 @@ Everything in this directory was written for one campaign by
 machine, uses your GPU, and talks to nothing.
 
 ```bash
-pixi run gobsmacked          # solves, installs, and writes results/results.tar.gz
+./run.sh
 ```
 
-`pixi run` installs what it needs on first use. To fetch the environment ahead of
-time (before going offline, say), run `pixi install -e default` first.
-
-Two environments ship: `default` is docking and MD, and `fold` adds ESMFold for a
-bundle that carries no `model_apo.pdb`:
+That is the whole thing. `run.sh` installs pixi if this machine has not got it,
+builds the environment from the `pixi.lock` shipped in this directory, and runs
+the five stages. The only prerequisites are `curl` and `bash`.
 
 ```bash
-pixi run -e fold gobsmacked
+./run.sh --list          # what would run, and what is already done
+./run.sh --stage dock    # rerun from a stage onward
 ```
+
+The environment is about 2.5 GB and is fetched once, into `.pixi/` inside this
+directory: nothing is installed system-wide, and deleting this directory removes
+every trace of it. Because the lock file is shipped, **no dependency solve
+happens here** and the versions are the ones this bundle was tested with rather
+than whatever resolves today. `run.sh` uses `--locked`, so if `pixi.lock` and
+`pixi.toml` ever disagree it stops rather than quietly building something else.
 
 There is no `gnn` environment, which matters if the campaign asks for
 `docking.mode: hybrid`. PandaDock's `[gnn]` extra pins `torch-scatter`, which
 publishes no wheel for macOS arm64 and needs torch importable while its own
-metadata is built, and pixi solves every declared environment before writing the
+metadata is built, and pixi solves every declared environment before writing a
 lock file: declaring one that cannot be solved leaves you with no environment at
-all rather than a partial one. On a machine where it does resolve:
+all. On a machine where it does resolve:
 
 ```bash
 pixi add --pypi torch torch-geometric

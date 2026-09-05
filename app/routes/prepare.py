@@ -389,8 +389,12 @@ def api_bundle():
     # -f so an HTTP error stops the chain with curl's own message. Without it
     # curl happily pipes the error page into tar, and the user is told
     # "not in gzip format" about a 403.
+    #
+    # ./run.sh rather than `pixi run`: the bundle carries its own lock file and
+    # installs pixi itself if the machine has not got it, so the only
+    # prerequisites are curl and bash.
     command = (f'curl -fL "{bundle_url}" | tar xz && cd run_bundle_{job_id} '
-               f'&& pixi run gobsmacked')
+               f'&& ./run.sh')
 
     md_cfg = campaign["md"]
     minutes = estimate_minutes(md_cfg, campaign["docking"])
@@ -404,6 +408,7 @@ def api_bundle():
         "analyze_url": url_for("analyze.analyze_page"),
         "command": command,
         "pixi_install": "curl -fsSL https://pixi.sh/install.sh | bash",
+        "needs": "curl and bash. run.sh installs pixi itself if you have not got it.",
         "results_path": f"run_bundle_{job_id}/results/results.tar.gz",
         "estimate_minutes": minutes,
     })

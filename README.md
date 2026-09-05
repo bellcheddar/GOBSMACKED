@@ -41,32 +41,17 @@ Nothing in the bundle contacts the server. The campaign file goes in, the result
 Open [gobsmacked.mdeller.com](https://gobsmacked.mdeller.com), paste a UniProt accession and a SMILES, pick a pocket, and download the bundle. Then, on a machine with a GPU:
 
 ```bash
-curl -L "https://gobsmacked.mdeller.com/runs/<job-id>/bundle" | tar xz \
-  && cd run_bundle_<job-id> && pixi run gobsmacked
+curl -fL "https://gobsmacked.mdeller.com/runs/<job-id>/bundle" | tar xz \
+  && cd run_bundle_<job-id> && ./run.sh
 ```
 
-Prepare prints that line with the job filled in and a copy button. It fetches the bundle,
-unpacks it, installs what it needs the first time and runs all five stages. If you do not have
-pixi: `curl -fsSL https://pixi.sh/install.sh | bash`.
+Prepare prints that line with the job filled in and a copy button. One step, and the only
+prerequisites are `curl` and `bash`: the bundle carries its own `pixi.lock`, and `run.sh`
+installs pixi if the machine has not got it, builds the environment from the lock (no solve, so
+the versions are the ones the bundle was tested with) and runs all five stages. The environment
+lives in `.pixi/` inside the bundle directory, so nothing is installed system-wide.
 
-The default environment is docking and MD alone. Two extras are opt-in rather than a tax on
-every run, because between them they are about three gigabytes:
-
-| Command | Adds | When you need it |
-|---|---|---|
-| `pixi run gobsmacked` | nothing | the usual case: the bundle carries a model and the empirical scorer is enough |
-| `pixi run -e fold gobsmacked` | ESMFold | a bundle with no `model_apo.pdb`, so the sequence has to be folded |
-
-There is deliberately **no** `gnn` environment, even though `docking.mode: hybrid` uses one.
-PandaDock's `[gnn]` extra pins `torch-scatter`, which publishes no wheel for macOS arm64 and
-needs torch importable while its own metadata is built, and **pixi solves every declared
-environment before it writes the lock file**: shipping one that cannot be solved leaves the
-user with no environment at all rather than a partial one. The bundle's README says how to add
-it where it does resolve. Without it, `run.py` falls back from `hybrid` to the empirical
-scorer and records that in the archive's warnings, which is a working run rather than a
-failed one.
-
-Upload `results/results.tar.gz` on the Analyze tab. The whole analysis takes seconds and lands on one page.
+Upload `results/results.tar.gz` on the Analyze tab when it finishes.
 
 To run the web application locally:
 
@@ -114,8 +99,8 @@ Five stages, each idempotent and resumable from a `.done` marker.
 | `summarise` | MDTraj | Per-frame ligand and backbone RMSD, per-residue RMSF, pocket volume by voxel counting, a residue-by-frame contact matrix, then packs the archive |
 
 ```bash
-pixi run gobsmacked --list          # what would run, and what is already done
-pixi run gobsmacked --stage dock    # rerun from dock onward
+./run.sh --list          # what would run, and what is already done
+./run.sh --stage dock    # rerun from dock onward
 ```
 
 Target on one consumer GPU: under 30 minutes for a 300-residue domain with the default 1 ns production. The runner prints a wall-clock estimate before it starts.
@@ -197,6 +182,8 @@ app/                     the Flask application (droplet only, no torch)
                          superpose, interactions, scorecard, modes, dynamics
   templates/  static/    Jinja2, the instrument-panel CSS, Mol* and Plotly
 bundle_template/         copied verbatim into every run bundle
+  run.sh                 one-step bootstrap: installs pixi, builds from the lock, runs
+  pixi.lock              970 packages pinned for linux-64 and osx-arm64
   run.py                 the five-stage runner with resume markers
   gobsmacked_run/        fold, prep, dock, md, summarise, schema
 design/                  the visual contract this app is built from
