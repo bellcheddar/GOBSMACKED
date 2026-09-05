@@ -1,0 +1,10 @@
+{# The stage strip: seven cells, navigation and progress in one. State is one of
+   done | warn | fail | pending, and drives the 3 px top border's colour. #}
+<div class="stages{% if animate %} animate{% endif %}">
+  {% for s in stages %}
+  <div class="stage {{ s.state }}"><b>{{ s.name }}</b><span>{{ s.text }}</span></div>
+  {% endfor %}
+  {% if strip_actions %}
+  <div class="strip-actions">{{ strip_actions|safe }}</div>
+  {% endif %}
+</div>

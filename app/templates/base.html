@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}GOBSMACKED{% endblock %}</title>
+<link rel="icon" href="{{ asset('icon/gobsmacked.svg') }}" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ asset('css/gobsmacked.css') }}">
+{% block head %}{% endblock %}
+</head>
+<body{% if job_id %} data-job-id="{{ job_id }}"{% endif %}>
+
+<div class="brand">
+  <a href="https://marcdeller.com">Marc C. Deller, D.Phil.</a>
+  <div class="centre">
+    <img src="{{ asset('icon/gobsmacked.svg') }}" alt="">
+    <span>GOBSMACKED</span>
+    <nav>
+      <a href="{{ url_for('prepare.prepare_page') }}" {% if tab == 'prepare' %}class="current"{% endif %}>Prepare</a>
+      <a href="{{ url_for('analyze.analyze_page') }}" {% if tab == 'analyze' %}class="current"{% endif %}>Analyze</a>
+      <a href="{{ url_for('runs.runs_page') }}" {% if tab == 'runs' %}class="current"{% endif %}>Runs</a>
+      <a href="{{ url_for('about.about_page') }}" {% if tab == 'about' %}class="current"{% endif %}>About</a>
+    </nav>
+    {% if job_id %}<span class="job">{{ job_id }}</span>{% endif %}
+  </div>
+  <a href="mailto:marc@marcdeller.com">marc@marcdeller.com</a>
+</div>
+
+{% block stages %}
+  {% if stages %}{% include "_stages.html" %}{% endif %}
+{% endblock %}
+
+{% block subnav %}{% endblock %}
+
+{% block content %}{% endblock %}
+
+<script src="{{ asset('js/stages.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}GOBSMACKED: error{% endblock %}
+{% block content %}
+<main class="deck single">
+  <section class="card error">
+    <h2>That did not work</h2>
+    <p>{{ message }}</p>
+    <p class="note">{{ fix }}</p>
+  </section>
+</main>
+{% endblock %}
