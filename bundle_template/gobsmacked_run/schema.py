@@ -93,7 +93,7 @@ def write_manifest(results: Path, job_id: str, campaign_path: Path,
         "command": " ".join(sys.argv),
     }
     path = results / "manifest.json"
-    path.write_text(json.dumps(manifest, indent=2))
+    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return path
 
 

@@ -107,7 +107,7 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
             summary[keys[index]] = measure()
         bar.update(len(measurements), note="done")
 
-    (traj_dir / "summary.json").write_text(json.dumps(summary))
+    (traj_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
     last = summary["ligand_rmsd_pose1"][-1] if summary["ligand_rmsd_pose1"] else None
     log(f"summarise: ligand RMSD {last if last is not None else '?'} A at the last frame")
     return {"warnings": warnings, "frames": traj.n_frames,

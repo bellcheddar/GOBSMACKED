@@ -109,14 +109,50 @@ class Console:
             return text
         return "".join(COLOURS[n] for n in names) + text + COLOURS["off"]
 
+    def _to_log(self, text: str) -> None:
+        """Append one plain line to run.log, and never raise while doing it.
+
+        Two ways this killed a run before it was written down. `open()` with no
+        encoding uses the locale's, which inside a pixi task is ASCII, so the
+        first bullet character in a bar's closing line raised UnicodeEncodeError
+        seventeen minutes into an MD stage. The handler that reported the
+        failure then wrote a cross through the same path and raised again, so
+        the traceback the person saw was about the console rather than about
+        their run.
+
+        The encoding is now named rather than inherited, and any failure here is
+        swallowed: this is a progress display, and there is no state it can be
+        in that justifies discarding an hour of molecular dynamics.
+        """
+        if self.log_path is None:
+            return
+        try:
+            stamp = datetime.now().strftime("%H:%M:%S")
+            with open(self.log_path, "a", encoding="utf-8", errors="replace") as fh:
+                fh.write(f"[{stamp}] {ANSI.sub('', text).rstrip()}\n")
+        except Exception:                          # noqa: BLE001 - never fatal
+            pass
+
+    def _speakable(self, text: str) -> str:
+        """Text the terminal can actually encode.
+
+        The icons are chosen from the stream's encoding at startup, but a
+        stage's own message is not: a residue name with an Angstrom sign in it
+        would go to an ASCII terminal and raise from inside print().
+        """
+        encoding = getattr(self.stream, "encoding", None) or "utf-8"
+        try:
+            text.encode(encoding)
+            return text
+        except (UnicodeEncodeError, LookupError):
+            return text.encode(encoding or "ascii", "replace").decode(encoding or "ascii")
+
     def write(self, line: str = "", to_log: bool = True) -> None:
         """One line to the terminal, the same line without escapes to the log."""
         self._clear_bar()
-        print(line, file=self.stream, flush=True)
-        if to_log and self.log_path is not None:
-            stamp = datetime.now().strftime("%H:%M:%S")
-            with open(self.log_path, "a") as fh:
-                fh.write(f"[{stamp}] {ANSI.sub('', line).rstrip()}\n")
+        print(self._speakable(line), file=self.stream, flush=True)
+        if to_log:
+            self._to_log(line)
 
     def __call__(self, message: str) -> None:
         """A stage's own log line.
@@ -138,11 +174,9 @@ class Console:
 
     def detail(self, message: str, logged: Optional[str] = None) -> None:
         self._clear_bar()
-        print("    " + self.paint(message, "grey"), file=self.stream, flush=True)
-        if self.log_path is not None:
-            stamp = datetime.now().strftime("%H:%M:%S")
-            with open(self.log_path, "a") as fh:
-                fh.write(f"[{stamp}] {ANSI.sub('', logged or message).rstrip()}\n")
+        print(self._speakable("    " + self.paint(message, "grey")),
+              file=self.stream, flush=True)
+        self._to_log(logged or message)
 
     # -- the furniture -------------------------------------------------------
     def banner(self, job_id: str, title: str) -> None:

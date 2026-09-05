@@ -137,3 +137,88 @@ def test_stages_without_a_console_still_run():
 ])
 def test_durations_read_the_way_a_person_would_say_them(seconds, expected):
     assert con.human(seconds) == expected
+
+
+# --- the console must never be able to take a run down -----------------------
+
+def test_the_log_names_its_encoding_rather_than_inheriting_it(tmp_path, monkeypatch):
+    """An ASCII locale killed a real MD run seventeen minutes in.
+
+    `open()` with no encoding uses the locale's, and inside a pixi task that is
+    ASCII, so the bullet in a bar's closing line raised UnicodeEncodeError from
+    the logging call and the handler reporting it raised again on the cross.
+
+    Setting LC_ALL in a test proves nothing: Python reads the locale once at
+    startup. So this asserts the thing that actually matters, that the call
+    never leaves the encoding to be inherited, by making an inherited encoding
+    fail the way the user's machine made it fail.
+    """
+    import builtins
+
+    real_open = builtins.open
+
+    def strict_open(file, mode="r", *args, **kwargs):
+        if "b" not in mode and kwargs.get("encoding") is None:
+            raise UnicodeEncodeError("ascii", "", 0, 1, "locale encoding inherited")
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", strict_open)
+    console = con.Console(log_path=tmp_path / "run.log", stream=io.StringIO())
+    console.write("equilibrating 100 ps: 1m 34s  \u2022  restraint 200 kJ/mol/nm^2")
+    console.fail("md failed: \u2717 something")
+    monkeypatch.undo()
+    written = (tmp_path / "run.log").read_text(encoding="utf-8")
+    assert "\u2022" in written and "\u2717" in written
+
+
+def test_no_bundle_file_leaves_its_text_encoding_to_the_locale():
+    """The same trap, everywhere else it could be sprung.
+
+    A campaign titled with a Greek beta would have failed on the read of
+    campaign.yaml, before a single stage ran. Parsed rather than grepped: the
+    first version of this test matched the sentence describing the bug in a
+    docstring and failed on its own prose.
+    """
+    import ast
+
+    bundle = Path(__file__).resolve().parents[1] / "bundle_template"
+    offenders = []
+    for path in sorted(list(bundle.glob("*.py")) + list(bundle.glob("*/*.py"))):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "open":
+                name = "open"
+            elif isinstance(func, ast.Attribute) and func.attr in ("read_text", "write_text"):
+                name = func.attr
+            else:
+                continue                    # tarfile.open and everything else
+            mode = next((a.value for a in node.args
+                         if isinstance(a, ast.Constant) and isinstance(a.value, str)), "")
+            if name == "open" and "b" in mode:
+                continue
+            if any(k.arg == "encoding" for k in node.keywords):
+                continue
+            offenders.append(f"{path.name}:{node.lineno} {name}")
+    assert not offenders, "text I/O with no encoding: " + ", ".join(offenders)
+
+
+def test_a_broken_log_never_reaches_the_stage(tmp_path):
+    """There is no state a progress display can be in that justifies
+    discarding an hour of molecular dynamics."""
+    console = con.Console(log_path=tmp_path / "no-such-directory" / "run.log",
+                          stream=io.StringIO())
+    console.write("this must not raise")
+    console.detail("nor this")
+    console.fail("nor this")
+
+
+def test_a_terminal_that_cannot_encode_the_message_still_gets_a_line():
+    """The icons follow the stream's encoding, but a stage's own text does not:
+    an Angstrom sign in a message would raise from inside print()."""
+    stream = AsciiStream()
+    console = con.Console(stream=stream)
+    console.write("pocket volume 412 Å³")
+    assert "pocket volume 412" in stream.getvalue()

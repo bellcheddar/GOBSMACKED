@@ -53,7 +53,7 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
         f"exhaustiveness {docking.get('exhaustiveness', 16)}")
     log("dock: " + " ".join(str(c) for c in cmd))
     captured, returncode = run_with_progress(cmd, log, estimate_seconds(docking))
-    (work / "pandadock.log").write_text(captured)
+    (work / "pandadock.log").write_text(captured, encoding="utf-8")
     if returncode != 0:
         tail = captured.strip().splitlines()[-3:]
         raise RuntimeError("PandaDock failed: " + " / ".join(tail))
@@ -177,7 +177,7 @@ def write_scores(out_dir: Path, dest: Path, log) -> list[dict]:
     rows: list[dict] = []
     for path in sorted(out_dir.glob("*_poses.json")) + sorted(out_dir.glob("*poses*.json")):
         try:
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
         poses = data.get("poses") if isinstance(data, dict) else data
@@ -199,7 +199,7 @@ def write_scores(out_dir: Path, dest: Path, log) -> list[dict]:
     if not rows:
         rows = scores_from_sdf(out_dir / "poses.sdf")
 
-    with open(dest, "w", newline="") as fh:
+    with open(dest, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=["pose_id", "score", "gnn_affinity", "rank"])
         writer.writeheader()
         writer.writerows(rows)

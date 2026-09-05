@@ -38,7 +38,7 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     trimmed = trim_to_range(model, campaign.get("protein") or {}, work, log, warnings)
 
     log(f"prep: PDBFixer on {trimmed.name} at pH {ph}")
-    original = residue_numbers(trimmed.read_text())
+    original = residue_numbers(trimmed.read_text(encoding="utf-8"))
     fixer = PDBFixer(filename=str(trimmed))
     fixer.removeHeterogens(keepWater=False)
     fixer.findMissingResidues()
@@ -54,17 +54,17 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     fixer.findMissingAtoms()
     fixer.addMissingAtoms()
     fixer.addMissingHydrogens(ph)
-    with open(receptor, "w") as fh:
+    with open(receptor, "w", encoding="utf-8") as fh:
         PDBFile.writeFile(fixer.topology, fixer.positions, fh, keepIds=True)
 
-    prepared = residue_numbers(receptor.read_text())
+    prepared = residue_numbers(receptor.read_text(encoding="utf-8"))
     (results / "numbering.json").write_text(json.dumps({
         "original_first": original[0] if original else None,
         "original_last": original[-1] if original else None,
         "prepared_first": prepared[0] if prepared else None,
         "prepared_last": prepared[-1] if prepared else None,
         "preserved": original[:1] == prepared[:1],
-    }, indent=2))
+    }, indent=2), encoding="utf-8")
     if original[:1] != prepared[:1]:
         warnings.append(
             f"PDBFixer renumbered the receptor: it started at {original[0]} and now starts at "
@@ -138,7 +138,7 @@ def trim_to_range(model: Path, protein: dict, work: Path, log, warnings: list[st
         return model
     st.setup_entities()
     dest = work / "model_trimmed.pdb"
-    dest.write_text(st.make_pdb_string())
+    dest.write_text(st.make_pdb_string(), encoding="utf-8")
     log(f"prep: trimmed to residues {lo}-{hi} ({kept} residues kept)")
     return dest
 

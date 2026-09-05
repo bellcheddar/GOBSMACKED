@@ -103,7 +103,7 @@ def main(argv=None) -> int:
     if not campaign_path.exists():
         print(f"No {args.campaign} beside run.py. Unpack the bundle and run from inside it.")
         return 2
-    campaign = yaml.safe_load(campaign_path.read_text()) or {}
+    campaign = yaml.safe_load(campaign_path.read_text(encoding="utf-8")) or {}
     job_id = campaign.get("job_id", "unknown")
 
     work = HERE / "work"
@@ -144,7 +144,7 @@ def main(argv=None) -> int:
 
     # campaign.yaml is echoed into the results so the server sees exactly what
     # ran, including any edit made here between generating and running.
-    (results / "campaign.yaml").write_text(campaign_path.read_text())
+    (results / "campaign.yaml").write_text(campaign_path.read_text(encoding="utf-8"), encoding="utf-8")
 
     timings: dict[str, float] = {}
     warnings: list[str] = []
@@ -161,7 +161,8 @@ def main(argv=None) -> int:
             frames = traceback.format_exc().rstrip().splitlines()
             for line in frames[-6:]:
                 log.detail(line, logged=line)
-            with open(results / "logs" / "run.log", "a") as fh:
+            with open(results / "logs" / "run.log", "a",
+                      encoding="utf-8", errors="replace") as fh:
                 fh.write(traceback.format_exc())
             log.warn(f"Fix the cause and rerun with --stage {name}; "
                      f"earlier stages are already done.")
@@ -170,7 +171,8 @@ def main(argv=None) -> int:
         warnings.extend(outcome.get("warnings") or [])
         done_marker(work, name).write_text(json.dumps(
             {"finished": schema.now(), "seconds": round(timings[name], 1), **{
-                k: v for k, v in outcome.items() if k != "warnings"}}, indent=2))
+                k: v for k, v in outcome.items() if k != "warnings"}}, indent=2),
+            encoding="utf-8")
         log.stage_end(name, timings[name], outcome.get("headline", ""))
 
     # A partial rerun (--stage, --only) would otherwise report only the stages
@@ -182,7 +184,7 @@ def main(argv=None) -> int:
         marker = done_marker(work, name)
         if marker.exists():
             try:
-                timings[name] = float(json.loads(marker.read_text()).get("seconds", 0.0))
+                timings[name] = float(json.loads(marker.read_text(encoding="utf-8")).get("seconds", 0.0))
             except (json.JSONDecodeError, TypeError, ValueError):
                 continue
 

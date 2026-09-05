@@ -268,5 +268,5 @@ def write_complex(simulation, dest: Path, solute_atoms: int) -> None:
     if solvent:
         modeller.delete(solvent)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with open(dest, "w") as fh:
+    with open(dest, "w", encoding="utf-8") as fh:
         app.PDBFile.writeFile(modeller.topology, modeller.positions, fh, keepIds=True)

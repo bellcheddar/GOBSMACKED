@@ -38,7 +38,7 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     warnings: list[str] = []
 
     if supplied.exists():
-        target.write_text(supplied.read_text())
+        target.write_text(supplied.read_text(encoding="utf-8"), encoding="utf-8")
         log(f"fold: skipped, using the supplied {protein.get('source_structure')} model "
             f"{protein.get('source_id') or ''}".rstrip())
         return {"folded": False, "warnings": warnings,
@@ -68,13 +68,13 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     with bar_for(log, f"folding {len(sequence)} residues on {device}"):
         with torch.no_grad():
             pdb_text = model.infer_pdb(sequence)
-    target.write_text(pdb_text)
+    target.write_text(pdb_text, encoding="utf-8")
 
     plddt = per_residue_plddt(pdb_text)
     (results / "plddt.json").write_text(json.dumps({
         "mean": round(sum(plddt.values()) / len(plddt), 2) if plddt else None,
         "per_residue": plddt,
-    }, indent=2))
+    }, indent=2), encoding="utf-8")
 
     pocket = pocket_residue_numbers(campaign)
     low = [n for n in pocket if plddt.get(str(n), 100.0) < POCKET_PLDDT_WARNING]
