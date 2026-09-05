@@ -40,14 +40,29 @@ pyyaml = "*"
 pip = "*"
 
 [pypi-dependencies]
-# Docking. The [gnn] extra pulls torch-geometric for the SE(3) rescoring model;
-# `pandadock dock` works without it and run.py falls back to that mode when the
-# checkpoint cannot be fetched.
+# Docking. The default install is the empirical search alone, which is about
+# 200 MB. The SE(3) GNN rescoring model wants PyTorch and PyTorch Geometric,
+# roughly three gigabytes more, so it is an opt-in environment rather than a
+# tax on every run: `run.py` already falls back from hybrid to dock when the
+# checkpoint is unavailable, and says so in the warnings.
+pandadock = ">=4.1"
+
+[feature.gnn.pypi-dependencies]
 pandadock = { version = ">=4.1", extras = ["gnn"] }
-# Folding. Only needed when the bundle carries no model_apo.pdb, which is the
-# minority of runs, but installing it conditionally would make the lock file
-# depend on the campaign.
+
+# Folding, needed only when the bundle carries no model_apo.pdb. Most bundles
+# do carry one, because the server found an AlphaFold or PDB structure first.
+[feature.fold.pypi-dependencies]
 fair-esm = ">=2.0"
+
+[environments]
+# pixi run gobsmacked          dock and MD, smallest install
+# pixi run -e gnn gobsmacked   adds the GNN rescoring model
+# pixi run -e full gobsmacked  adds ESMFold as well, for a bundle with no model
+default = { solve-group = "run" }
+gnn = { features = ["gnn"], solve-group = "run" }
+fold = { features = ["fold"], solve-group = "run" }
+full = { features = ["gnn", "fold"], solve-group = "run" }
 
 [tasks]
 gobsmacked = "python run.py"

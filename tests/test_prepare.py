@@ -134,3 +134,70 @@ def test_reference_search_prefers_the_same_ligand(client):
     top = body["entries"][0]
     assert top["best_ligand"]["ccd"] == "AQ4"
     assert top["tanimoto"] == 1.0
+
+
+@needs_network
+def test_reference_site_is_renumbered_onto_the_model(client):
+    """1M17 numbers EGFR from the mature protein, 24 lower than UniProt. Pasting
+    its site straight into the pocket picker would select real residues that are
+    the wrong ones, which is worse than an error."""
+    fetched = client.post("/api/fetch", json={"query": "P00533"}).get_json()
+    response = client.post("/api/reference_site", json={
+        "pdb_id": "1M17", "ligand_ccd": "AQ4",
+        "structure_name": fetched["structure_name"], "chain": fetched["chain"]})
+    body = response.get_json()
+    assert body["renumbered"] is True
+    assert body["reference_residues"], "no site found in the crystal"
+
+    def numbers(labels):
+        return {int(label.split(":")[-1]) for label in labels}
+
+    crystal = numbers(body["reference_residues"])
+    model = numbers(body["residues"])
+    # The gatekeeper is Thr766 in 1M17 and Thr790 in UniProt numbering.
+    assert 766 in crystal and 790 in model
+    offsets = {m - c for m, c in zip(sorted(model), sorted(crystal))}
+    assert offsets == {24}, f"expected a uniform +24 shift, got {sorted(offsets)}"
+
+
+@needs_network
+def test_box_is_sized_from_the_ligand_not_the_residue_shell(client):
+    """Sizing a docking box from the residues around a ligand makes it five
+    times larger than the ligand needs, which samples the true site less
+    densely for no benefit."""
+    fetched = client.post("/api/fetch", json={"query": "P00533"}).get_json()
+    site = client.post("/api/reference_site", json={
+        "pdb_id": "1M17", "ligand_ccd": "AQ4",
+        "structure_name": fetched["structure_name"], "chain": fetched["chain"]}).get_json()
+
+    shell = client.post("/api/pocket", json={
+        "structure_name": fetched["structure_name"], "chain": fetched["chain"],
+        "residues": site["residues"]}).get_json()
+    sized = client.post("/api/pocket", json={
+        "structure_name": fetched["structure_name"], "chain": fetched["chain"],
+        "residues": site["residues"],
+        "size_from_reference": {"pdb_id": "1M17", "ligand_ccd": "AQ4"}}).get_json()
+
+    def volume(box):
+        return box[0] * box[1] * box[2]
+
+    assert sized["center"] == shell["center"], "the centre must still come from the model"
+    assert sized["sized_from"] == "1M17 AQ4"
+    assert volume(sized["box"]) < volume(shell["box"]) / 3
+    # Still large enough for the ligand to rotate in.
+    assert min(sized["box"]) >= 18.0
+
+
+def test_bundle_carries_no_hidden_files(client, app):
+    """macOS writes .DS_Store into any directory Finder has opened, and one
+    shipped inside the first real bundle."""
+    response = client.post("/api/bundle", json={
+        "protein": {"sequence": "MRPSGTAGAALLALL", "chain": "A"},
+        "ligand": {"name": "x", "smiles": "CCO"},
+        "pocket": {"residues": ["A:1"], "center": [0, 0, 0], "box": [18, 18, 18]}})
+    job_id = response.get_json()["job_id"]
+    from app import config
+    with tarfile.open(config.RUNS_DIR / job_id / f"run_bundle_{job_id}.tar.gz") as tar:
+        names = [n.split("/", 1)[-1] for n in tar.getnames()]
+    hidden = [n for n in names if any(part.startswith(".") for part in n.split("/") if part)]
+    assert not hidden, f"hidden files in the bundle: {hidden}"

@@ -2,7 +2,7 @@
 
 > **Fold, dock, relax and annotate a protein-ligand complex, then check it against the experimental structure.**
 
-[![live](https://img.shields.io/badge/live-gobsmacked.mdeller.com-00d084?logo=icloud&logoColor=white)](https://gobsmacked.mdeller.com) ![python](https://img.shields.io/badge/python-3.11.16-3776AB?logo=python&logoColor=white) ![flask](https://img.shields.io/badge/flask-3.1.3-000000?logo=flask&logoColor=white) ![gunicorn](https://img.shields.io/badge/gunicorn-26.2.0-499848?logo=gunicorn&logoColor=white) ![nginx](https://img.shields.io/badge/nginx-1.24-009639?logo=nginx&logoColor=white) ![sqlite](https://img.shields.io/badge/sqlite-3-003B57?logo=sqlite&logoColor=white) ![rdkit](https://img.shields.io/badge/rdkit-2026.3.6-3838AB) ![biotite](https://img.shields.io/badge/biotite-1.6.0-467FF7) ![gemmi](https://img.shields.io/badge/gemmi-0.7.5-467FF7) ![mdtraj](https://img.shields.io/badge/mdtraj-1.11.1-467FF7) ![plip](https://img.shields.io/badge/PLIP-3.0.1-9b51e0) ![pandamap](https://img.shields.io/badge/PandaMap-4.3.0-9b51e0) ![pandadock](https://img.shields.io/badge/PandaDock-4.1.1-9b51e0) ![openmm](https://img.shields.io/badge/OpenMM-8.2-00897B) ![esmfold](https://img.shields.io/badge/ESMFold-v1-00897B) ![tmtools](https://img.shields.io/badge/TM--align-0.3.0-00897B) ![molstar](https://img.shields.io/badge/Mol*-5.11.0-467FF7) ![plotly](https://img.shields.io/badge/Plotly.js-2.35.2-3F4F75?logo=plotly&logoColor=white) ![tests](https://img.shields.io/badge/pytest-65%20passing-00d084) ![data](https://img.shields.io/badge/data-RCSB%20%C2%B7%20UniProt%20%C2%B7%20AlphaFold%20DB%20%C2%B7%20KLIFS%20%C2%B7%20GPCRdb%20%C2%B7%20InterPro-467FF7) ![licence](https://img.shields.io/badge/licence-MIT-lightgrey) ![author](https://img.shields.io/badge/author-Marc%20C.%20Deller%2C%20D.Phil.-1C244B)
+[![live](https://img.shields.io/badge/live-gobsmacked.mdeller.com-00d084?logo=icloud&logoColor=white)](https://gobsmacked.mdeller.com) ![python](https://img.shields.io/badge/python-3.11.16-3776AB?logo=python&logoColor=white) ![flask](https://img.shields.io/badge/flask-3.1.3-000000?logo=flask&logoColor=white) ![gunicorn](https://img.shields.io/badge/gunicorn-26.2.0-499848?logo=gunicorn&logoColor=white) ![nginx](https://img.shields.io/badge/nginx-1.24-009639?logo=nginx&logoColor=white) ![sqlite](https://img.shields.io/badge/sqlite-3-003B57?logo=sqlite&logoColor=white) ![rdkit](https://img.shields.io/badge/rdkit-2026.3.6-3838AB) ![biotite](https://img.shields.io/badge/biotite-1.6.0-467FF7) ![gemmi](https://img.shields.io/badge/gemmi-0.7.5-467FF7) ![mdtraj](https://img.shields.io/badge/mdtraj-1.11.1-467FF7) ![plip](https://img.shields.io/badge/PLIP-3.0.1-9b51e0) ![pandamap](https://img.shields.io/badge/PandaMap-4.3.0-9b51e0) ![pandadock](https://img.shields.io/badge/PandaDock-4.1.1-9b51e0) ![openmm](https://img.shields.io/badge/OpenMM-8.2-00897B) ![esmfold](https://img.shields.io/badge/ESMFold-v1-00897B) ![tmtools](https://img.shields.io/badge/TM--align-0.3.0-00897B) ![molstar](https://img.shields.io/badge/Mol*-5.11.0-467FF7) ![plotly](https://img.shields.io/badge/Plotly.js-2.35.2-3F4F75?logo=plotly&logoColor=white) ![tests](https://img.shields.io/badge/pytest-67%20passing-00d084) ![data](https://img.shields.io/badge/data-RCSB%20%C2%B7%20UniProt%20%C2%B7%20AlphaFold%20DB%20%C2%B7%20KLIFS%20%C2%B7%20GPCRdb%20%C2%B7%20InterPro-467FF7) ![licence](https://img.shields.io/badge/licence-MIT-lightgrey) ![author](https://img.shields.io/badge/author-Marc%20C.%20Deller%2C%20D.Phil.-1C244B)
 
 <table>
 <tr>
@@ -47,6 +47,18 @@ pixi install
 pixi run gobsmacked          # writes results/results.tar.gz
 ```
 
+The default environment is docking and MD alone. Two extras are opt-in rather than a tax on
+every run, because between them they are about three gigabytes:
+
+| Command | Adds | When you need it |
+|---|---|---|
+| `pixi run gobsmacked` | nothing | the usual case: the bundle carries a model and the empirical scorer is enough |
+| `pixi run -e gnn gobsmacked` | PyTorch, PyTorch Geometric | `docking.mode: hybrid`, for SE(3) GNN rescoring |
+| `pixi run -e full gobsmacked` | the above plus ESMFold | a bundle with no `model_apo.pdb`, so the sequence has to be folded |
+
+`run.py` falls back from `hybrid` to `dock` when the GNN checkpoint cannot be fetched, and
+says so in the archive's warnings, so choosing the wrong environment degrades rather than fails.
+
 Upload `results/results.tar.gz` on the Analyze tab. The whole analysis takes seconds and lands on one page.
 
 To run the web application locally:
@@ -65,12 +77,18 @@ Four panels, each unlocking the next.
 
 | Panel | Accepts | What it does |
 |---|---|---|
-| **1. Protein** | UniProt accession, PDB ID, raw sequence, or a dropped `.pdb` / `.cif` | Resolves the canonical sequence and picks a starting structure by a fixed, reported priority: your upload > a named PDB entry > AlphaFold DB > ESM Atlas > fold it in the bundle |
+| **1. Protein** | UniProt accession, PDB ID, raw sequence, or a dropped `.pdb` / `.cif`, plus an optional domain range | Resolves the canonical sequence and picks a starting structure by a fixed, reported priority: your upload > a named PDB entry > AlphaFold DB > ESM Atlas > fold it in the bundle. **From Pfam** fills the range from the domain the pocket sits in |
 | **2. Annotation** | (automatic) | InterPro supplies Pfam domains, which route the target: `PF00069`/`PF07714` to KLIFS, `PF00001`/`PF00002`/`PF00003`/`PF10324` to GPCRdb, anything else to UniProt features alone |
 | **3. Ligand and pocket** | SMILES, plus residues clicked in Mol* or on the sequence track | RDKit validates and draws the ligand; the docking box is the selection's extent plus 8 Å, floored at 18 Å per side |
 | **4. Reference** | (automatic, or a typed PDB ID) | RCSB entries mapped to the accession, ranked by Morgan Tanimoto against your ligand, with resolution and a 2D depiction |
 
 ![The Prepare tab: the four input panels on the left and right, an empty Mol* scope in the centre waiting for a structure, and the seven-cell stage strip across the top showing what the bundle will run](docs/screenshots/prepare.png)
+
+**Trim to the domain.** An AlphaFold model is of the whole precursor. EGFR's is 1,210 residues, of which the kinase domain is 253: solvating the other 957 costs an order of magnitude in MD time, adds two disordered tails that wander through the box, and tells you nothing about the pocket.
+
+**The reference's site is renumbered onto your model.** 1M17 numbers EGFR from the mature protein and UniProt from the precursor, 24 apart. Pasting the crystal's residue list straight into the pocket picker would select real residues that are the wrong ones, which is worse than an error, so both structures are aligned by sequence first.
+
+**The docking box is sized from the ligand, not from the residues around it.** Erlotinib's own extent plus padding is 32 x 21 x 23 A; the shell of its 51 contacting residues gives 48 x 42 x 42, a search volume five times larger that samples the true site less densely for no benefit. The centre still comes from the model, because the crystal is in its own coordinate frame and only the extent transfers.
 
 **Reference selection prefers the same ligand over a sharper crystal.** EGFR and erlotinib make the case: 1M17 holds erlotinib itself at 2.6 Å, while the best sub-2.5 Å entry holds gefitinib at Tanimoto 0.41. Judging an erlotinib pose against a gefitinib crystal because the crystal is 0.9 Å sharper would measure the wrong thing.
 
@@ -177,14 +195,14 @@ bundle_template/         copied verbatim into every run bundle
 design/                  the visual contract this app is built from
 deploy/                  systemd units, nginx site, provision and deploy scripts
 scripts/                 prune, DOI checker, THIRD_PARTY generator
-tests/                   65 tests, plus two fixture archives built from crystals
+tests/                   67 tests, plus two fixture archives built from crystals
 software.yaml            the single source of truth for attribution
 ```
 
 ## 🧫 Testing
 
 ```bash
-make test                # 65 tests, about 40 seconds
+make test                # 67 tests, about 50 seconds
 make check-refs          # every DOI in software.yaml, checked against Crossref
 make third-party         # regenerate THIRD_PARTY.md from software.yaml
 python tests/fixtures/build_fixtures.py    # rebuild the two fixture archives

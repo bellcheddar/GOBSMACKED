@@ -17,6 +17,11 @@
       <input type="text" id="pdb-hint" placeholder="1M17" autocomplete="off">
       <label for="upload">Or drop your own coordinates (.pdb, .cif)</label>
       <input type="file" id="upload" accept=".pdb,.cif,.ent,.mmcif">
+      <label for="residue-range">Trim to a domain, optional (first-last residue)</label>
+      <div class="row">
+        <input type="text" id="residue-range" placeholder="696-1022" autocomplete="off">
+        <button class="fixed small" id="range-from-pfam" title="Use the Pfam domain the pocket sits in">From Pfam</button>
+      </div>
       <div class="row" style="margin-top:14px">
         <button id="fetch-btn">Fetch</button>
       </div>

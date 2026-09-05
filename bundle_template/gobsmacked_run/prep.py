@@ -29,10 +29,17 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
 
     model = results / "model_apo.pdb"
     receptor = work / "receptor.pdb"
-    log(f"prep: PDBFixer on {model.name} at pH {ph}")
 
-    original = residue_numbers(model.read_text())
-    fixer = PDBFixer(filename=str(model))
+    # Trim to the domain first, when the campaign asked for it. An AlphaFold
+    # model is of the whole precursor: EGFR's is 1,210 residues, of which the
+    # kinase domain is 327. Solvating the other 883 costs an order of magnitude
+    # in MD time, adds two disordered tails that wander through the box, and
+    # tells you nothing about the pocket.
+    trimmed = trim_to_range(model, campaign.get("protein") or {}, work, log, warnings)
+
+    log(f"prep: PDBFixer on {trimmed.name} at pH {ph}")
+    original = residue_numbers(trimmed.read_text())
+    fixer = PDBFixer(filename=str(trimmed))
     fixer.removeHeterogens(keepWater=False)
     fixer.findMissingResidues()
     # Missing residues at the chain ends are absent from the construct, not from
@@ -93,6 +100,46 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
 
     log(f"prep: receptor and ligand written ({mol.GetNumHeavyAtoms()} heavy atoms)")
     return {"warnings": warnings, "heavy_atoms": mol.GetNumHeavyAtoms()}
+
+
+def trim_to_range(model: Path, protein: dict, work: Path, log, warnings: list[str]) -> Path:
+    """Keep only `residue_range` (inclusive), in the model's own numbering.
+
+    Returns the original path untouched when no range was asked for, so a
+    campaign that wants the whole chain is unaffected. Author numbering is
+    preserved: everything downstream, including the server's superposition,
+    refers to it.
+    """
+    import gemmi
+
+    span = protein.get("residue_range")
+    if not span or len(span) != 2:
+        return model
+    lo, hi = int(span[0]), int(span[1])
+
+    st = gemmi.read_structure(str(model))
+    st.setup_entities()
+    kept = 0
+    for chain in st[0]:
+        survivors = [res.clone() for res in chain if lo <= res.seqid.num <= hi]
+        kept += len(survivors)
+        # gemmi's Chain has no remove_residue, and deleting by index while
+        # walking the chain would skip residues, so it is emptied from the end.
+        for index in range(len(chain) - 1, -1, -1):
+            del chain[index]
+        for res in survivors:
+            chain.add_residue(res)
+    if kept < 10:
+        warnings.append(
+            f"residue_range {lo}-{hi} matched only {kept} residues in the model, so the "
+            f"whole chain was used instead. Check the numbering of the structure you started from."
+        )
+        return model
+    st.setup_entities()
+    dest = work / "model_trimmed.pdb"
+    dest.write_text(st.make_pdb_string())
+    log(f"prep: trimmed to residues {lo}-{hi} ({kept} residues kept)")
+    return dest
 
 
 def residue_numbers(pdb_text: str) -> list[int]:

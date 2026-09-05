@@ -94,6 +94,31 @@ def pocket_box(structure_path: str | Path, residues: Iterable[str],
     }
 
 
+def ligand_extent(structure_path: str | Path, ccd: str) -> Optional[list[float]]:
+    """Box side lengths that contain a named ligand, plus padding.
+
+    Sizing a docking box from the shell of residues around a ligand makes it far
+    too big: EGFR's 51 pocket residues span about 30 A, so the padded box comes
+    out at 42 x 45 x 49 A when erlotinib itself needs 26. A search volume six
+    times larger than necessary is slower and samples the true site less
+    densely, which is a worse pose for no reason.
+
+    Returned as sizes only, never as a centre: the reference crystal is in its
+    own coordinate frame, and only the extent transfers to the model.
+    """
+    st = gemmi.read_structure(str(structure_path))
+    st.setup_entities()
+    st.remove_waters()
+    coords = [(a.pos.x, a.pos.y, a.pos.z) for ch in st[0] for res in ch
+              if res.name.upper() == ccd.upper() for a in res
+              if a.element != gemmi.Element("H")]
+    if not coords:
+        return None
+    xs, ys, zs = zip(*coords)
+    return [round(max(config.BOX_MIN_SIDE, (max(v) - min(v)) + 2 * config.BOX_PADDING), 1)
+            for v in (xs, ys, zs)]
+
+
 def residues_near_ligand(structure_path: str | Path, ccd: str,
                          radius: float = config.POCKET_RADIUS) -> list[str]:
     """Polymer residues with a heavy atom within `radius` of a named ligand.
@@ -216,6 +241,10 @@ def write_bundle(job_id: str, campaign: dict, structure_path: Optional[str] = No
     with tarfile.open(archive, "w:gz") as tar:
         for src in sorted(config.BUNDLE_TEMPLATE_DIR.rglob("*")):
             if any(part in {"__pycache__", ".pixi"} for part in src.parts):
+                continue
+            # Nothing hidden: macOS writes .DS_Store into any directory a Finder
+            # window has touched, and it shipped inside the first real bundle.
+            if any(part.startswith(".") for part in src.parts):
                 continue
             if src.is_dir():
                 continue

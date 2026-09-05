@@ -90,6 +90,34 @@ def api_fetch():
     return jsonify(out)
 
 
+def _translate_residues(reference_path: str, residues: list[str], model_path,
+                        model_chain: str | None) -> list[str]:
+    """Reference residue labels ("A:766") in the model's own numbering.
+
+    Both structures are read as chains and aligned by sequence, which is the
+    same route every measurement on the Analyze side takes. A residue with no
+    counterpart is dropped rather than carried across unchanged.
+    """
+    from ..services import superpose as sup_svc
+
+    reference = sup_svc.load_chain(reference_path)
+    model = sup_svc.load_chain(model_path, model_chain)
+    if reference is None or model is None:
+        return []
+    mapping = sup_svc.align_numbering(model, reference)          # model -> reference
+    inverse = {ref: mod for mod, ref in mapping.items()}
+    chain_name = model.name
+    out = []
+    for label in residues:
+        try:
+            number = int(str(label).split(":")[-1])
+        except ValueError:
+            continue
+        if number in inverse:
+            out.append(f"{chain_name}:{inverse[number]}")
+    return out
+
+
 def _numbering(structure_path: str, chain: str, sequence: str) -> dict[str, int]:
     """Sequence position (1-based, as a string key) -> residue number in the model."""
     from ..services import modes as modes_svc
@@ -198,6 +226,19 @@ def api_pocket():
     box = bundle_svc.pocket_box(path, residues, payload.get("chain", "A"))
     if not box:
         return jsonify({"error": "None of those residues are in the structure."}), 400
+
+    # When the site came from a reference ligand, take the box SIZE from that
+    # ligand and keep the centre from the residues. The centre has to come from
+    # the model, because the crystal is in its own coordinate frame; the extent
+    # is frame-independent and is the only honest size for the search.
+    sized_from = payload.get("size_from_reference") or {}
+    if sized_from.get("pdb_id") and sized_from.get("ligand_ccd"):
+        fetched = fetch_svc.fetch_pdb(sized_from["pdb_id"])
+        if fetched:
+            extent = bundle_svc.ligand_extent(fetched["path"], sized_from["ligand_ccd"])
+            if extent:
+                box["box"] = extent
+                box["sized_from"] = f"{sized_from['pdb_id']} {sized_from['ligand_ccd']}"
     return jsonify({"residues": residues, **box})
 
 
@@ -248,11 +289,30 @@ def api_reference_site():
     ligands = fetch_svc.structure_ligands(got["path"])
     if not ccd and ligands:
         ccd = ligands[0]["ccd"]
-    residues = bundle_svc.residues_near_ligand(got["path"], ccd) if ccd else []
+    reference_residues = bundle_svc.residues_near_ligand(got["path"], ccd) if ccd else []
+
+    # Translated into the MODEL's numbering when the caller says which model it
+    # is holding. 1M17 numbers EGFR from the mature protein and UniProt from the
+    # precursor, 24 apart, so pasting the crystal's residue list straight into
+    # the pocket picker selects real residues that are the wrong ones: a
+    # silently misplaced docking box rather than an error.
+    residues = reference_residues
+    mapped = None
+    model_name = payload.get("structure_name")
+    if reference_residues and model_name and SAFE_NAME.match(model_name):
+        model_path = config.STRUCT_CACHE / model_name
+        if model_path.exists():
+            mapped = _translate_residues(got["path"], reference_residues,
+                                         model_path, payload.get("chain"))
+            if mapped:
+                residues = mapped
+
     return jsonify({
         "pdb_id": pdb_id,
         "ligand_ccd": ccd,
         "residues": residues,
+        "reference_residues": reference_residues,
+        "renumbered": bool(mapped) and mapped != reference_residues,
         "ligands": ligands,
         "chains": fetch_svc.structure_chains(got["path"]),
         "resolution": got.get("resolution"),

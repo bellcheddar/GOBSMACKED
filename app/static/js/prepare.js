@@ -212,6 +212,45 @@
     });
   }
 
+  /* "696-1022" -> [696, 1022]. Anything else is no range at all rather than a
+     half-parsed one: trimming to the wrong span would be worse than not
+     trimming, and silently so. */
+  function parseRange(text) {
+    var match = /^\s*(\d+)\s*[-\u2013:]\s*(\d+)\s*$/.exec(text || "");
+    if (!match) return null;
+    var lo = parseInt(match[1], 10);
+    var hi = parseInt(match[2], 10);
+    return hi > lo ? [lo, hi] : null;
+  }
+
+  /* The Pfam domain the pocket sits in, or the largest one when nothing is
+     selected yet. This is the button most people want: an AlphaFold model is of
+     the whole precursor, and solvating 883 residues around a 327-residue kinase
+     domain costs an order of magnitude in MD time for nothing. */
+  function rangeFromPfam() {
+    var domains = (state.annotation && state.annotation.pfam) || [];
+    if (!domains.length) {
+      say("protein-result", "No Pfam domains fetched yet: press Fetch first.", "error");
+      return;
+    }
+    var positions = Object.keys(selected).map(function (key) {
+      return state.inverse[parseInt(key.split(":")[1], 10)];
+    }).filter(Boolean);
+    var chosen = null;
+    if (positions.length) {
+      var mid = positions[Math.floor(positions.length / 2)];
+      chosen = domains.filter(function (d) { return d.start <= mid && mid <= d.end; })[0];
+    }
+    if (!chosen) {
+      chosen = domains.slice().sort(function (a, b) {
+        return (b.end - b.start) - (a.end - a.start);
+      })[0];
+    }
+    $("residue-range").value = chosen.start + "-" + chosen.end;
+    say("protein-result", "Trimming to " + chosen.pfam + " " + chosen.name +
+        ", residues " + chosen.start + " to " + chosen.end + ".");
+  }
+
   function switchRow(label, value, on) {
     return "<li><span><i class='led " + (on ? "" : "off") + "'></i>" + label + "</span><span>" +
            value + "</span></li>";
@@ -302,6 +341,11 @@
       chain: state.protein.chain,
       residues: Object.keys(selected),
     };
+    if (state.reference && state.reference.pdb_id && state.reference.ligand_ccd &&
+        state.pocketFromReference) {
+      body.size_from_reference = { pdb_id: state.reference.pdb_id,
+                                   ligand_ccd: state.reference.ligand_ccd };
+    }
     if (fromLigand) body.from_ligand = fromLigand;
     if (!body.residues.length && !fromLigand) {
       say("pocket-result", "");
@@ -325,6 +369,7 @@
       say("pocket-result", data.n_residues + " residues &middot; centre " +
           data.center.map(function (v) { return v.toFixed(1); }).join(", ") +
           " &middot; box " + data.box.join(" x ") + " A" +
+          (data.sized_from ? " (sized on " + data.sized_from + ")" : "") +
           (data.missing && data.missing.length ? "<br>Not in the structure: " + data.missing.join(", ") : ""));
       if (scope) scope.focus(data.residues.map(function (key) {
         var parts = key.split(":");
@@ -389,7 +434,11 @@
     $("reference-list").querySelectorAll("tr").forEach(function (row) {
       row.style.background = row.getAttribute("data-pdb") === pdbId ? "var(--panel-2)" : "";
     });
-    postJSON("/api/reference_site", { pdb_id: pdbId, ligand_ccd: ccd }).then(function (data) {
+    postJSON("/api/reference_site", {
+      pdb_id: pdbId, ligand_ccd: ccd,
+      structure_name: state.protein && state.protein.structure_name,
+      chain: state.protein && state.protein.chain,
+    }).then(function (data) {
       state.reference.chain = (data.chains && data.chains.length) ? data.chains[0].chain : null;
       state.reference.ligand_ccd = data.ligand_ccd;
       state.reference.site_residues = data.residues;
@@ -413,8 +462,18 @@
     }
     postJSON("/api/reference_site", {
       pdb_id: state.reference.pdb_id, ligand_ccd: state.reference.ligand_ccd,
+      // Naming the model is what lets the server hand back the site in the
+      // model's numbering rather than the crystal's.
+      structure_name: state.protein && state.protein.structure_name,
+      chain: state.protein && state.protein.chain,
     }).then(function (data) {
+      state.pocketFromReference = true;
       $("residues").value = data.residues.join(", ");
+      if (data.renumbered) {
+        say("pocket-result", "Site taken from " + data.pdb_id + " and renumbered onto this model: "
+            + data.reference_residues.length + " crystal residues, "
+            + data.residues.length + " matched.");
+      }
       readResidueBox();
       writeResidueBox();
       computeBox();
@@ -445,6 +504,7 @@
         source_id: state.protein.source_id,
         chain: state.protein.chain,
         family: (state.annotation && state.annotation.family) || "other",
+        residue_range: parseRange($("residue-range").value),
         protein_name: state.protein.protein_name,
         gene: state.protein.gene,
         structure_name: state.protein.structure_name,
@@ -503,11 +563,13 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     $("fetch-btn").addEventListener("click", fetchProtein);
+    $("range-from-pfam").addEventListener("click", rangeFromPfam);
     $("query").addEventListener("keydown", function (e) { if (e.key === "Enter") fetchProtein(); });
     $("ligand-btn").addEventListener("click", checkLigand);
     $("pocket-btn").addEventListener("click", function () { readResidueBox(); writeResidueBox(); computeBox(); });
     $("pocket-clear").addEventListener("click", function () {
-      selected = {}; syncToTrack(); writeResidueBox(); say("pocket-result", "");
+      selected = {}; state.pocketFromReference = false;
+      syncToTrack(); writeResidueBox(); say("pocket-result", "");
     });
     $("pocket-from-ref").addEventListener("click", useReferenceSite);
     $("reference-search").addEventListener("click", searchReferences);
