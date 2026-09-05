@@ -81,10 +81,12 @@
       <h2>4. Reference structure</h2>
       <p class="note">Ranked by how similar each entry's ligand is to yours. A crystal holding the
         same ligand is preferred over a sharper one holding a different chemotype.</p>
+      <label for="reference-manual">Reference PDB entry</label>
       <div class="row">
-        <input type="text" id="reference-manual" placeholder="Type a PDB ID">
+        <input type="text" id="reference-manual" placeholder="1M17">
         <button class="fixed" id="reference-manual-btn">Use</button>
       </div>
+      <p class="note" id="reference-chosen">Search below and click an entry, or type one here.</p>
       <div class="row" style="margin-top:8px">
         <button id="reference-search">Search RCSB</button>
         <button id="reference-none" class="fixed">None</button>

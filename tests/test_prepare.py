@@ -218,3 +218,47 @@ def test_bundle_environments_do_not_share_a_solve_group():
     for name, spec in environments.items():
         assert "solve-group" not in spec, f"{name} shares a solve group"
     assert not (environments["default"].get("features") or [])
+
+
+def test_the_run_command_is_one_line_and_self_contained(client, app):
+    """Four steps (download, find the file, untar, cd) are four chances to end
+    up in the wrong directory, and none of them is interesting."""
+    response = client.post("/api/bundle", json={
+        "protein": {"sequence": "MRPSGTAGAALLALL", "chain": "A"},
+        "ligand": {"name": "x", "smiles": "CCO"},
+        "pocket": {"residues": ["A:1"], "center": [0, 0, 0], "box": [18, 18, 18]},
+        "md": {"production_ps": 500, "equilibration_ps": 100},
+        "docking": {"mode": "dock"}})
+    body = response.get_json()
+    command = body["command"]
+    assert command.count("&&") == 2, "should be fetch, cd, run and nothing else"
+    assert command.startswith("curl -L "), "the download is part of the command"
+    assert "| tar xz" in command
+    assert f"cd run_bundle_{body['job_id']}" in command
+    assert command.endswith("pixi run gobsmacked")
+    # An absolute URL, or pasting it into a terminal fetches nothing.
+    assert "http://localhost/runs/" in command or "https://" in command
+    assert body["results_path"].endswith("results/results.tar.gz")
+    assert 30 <= body["estimate_minutes"] <= 120, body["estimate_minutes"]
+
+
+def test_a_private_bundle_command_carries_its_token(client):
+    """A private bundle is guarded, so the command has to authenticate or the
+    curl fetches a 403 and the user sees tar complain about an empty archive."""
+    response = client.post("/api/bundle", json={
+        "visibility": "private",
+        "protein": {"sequence": "MRPSGTAGAALLALL", "chain": "A"},
+        "ligand": {"name": "x", "smiles": "CCO"},
+        "pocket": {"residues": ["A:1"], "center": [0, 0, 0], "box": [18, 18, 18]}})
+    body = response.get_json()
+    assert f"token={body['owner_token']}" in body["command"]
+
+
+def test_a_public_bundle_command_carries_no_token(client):
+    response = client.post("/api/bundle", json={
+        "visibility": "public",
+        "protein": {"sequence": "MRPSGTAGAALLALL", "chain": "A"},
+        "ligand": {"name": "x", "smiles": "CCO"},
+        "pocket": {"residues": ["A:1"], "center": [0, 0, 0], "box": [18, 18, 18]}})
+    body = response.get_json()
+    assert "token=" not in body["command"]

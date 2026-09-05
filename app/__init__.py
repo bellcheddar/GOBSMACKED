@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 from flask import Flask, render_template
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import config, db
 
@@ -25,6 +26,11 @@ def create_app(test_config: dict | None = None) -> Flask:
     )
     if test_config:
         app.config.update(test_config)
+
+    # nginx terminates TLS and proxies to gunicorn over http, so without this
+    # every url_for(..., _external=True) says http and the wrong host. That
+    # matters now that the app hands out a curl command people paste.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     config.ensure_dirs()
     db.init_db()

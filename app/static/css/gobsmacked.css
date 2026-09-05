@@ -292,6 +292,16 @@ td.num { text-align: right; }
 .scroll { overflow-x: auto; }
 
 /* --- Small parts ------------------------------------------------------ */
+/* The reference list is a control, not a readout: rows look clickable, the
+   chosen one stays marked, and the depictions keep a fixed column so the
+   table does not jump as they load. */
+.reference-list { max-height: 420px; overflow-y: auto; }
+.reference-list tbody tr { cursor: pointer; }
+.reference-list tbody tr:focus { outline: 1px solid var(--phos); outline-offset: -1px; }
+.reference-list tbody tr.chosen { background: var(--panel-2); }
+.reference-list tbody tr.chosen td:first-child { box-shadow: inset 3px 0 0 var(--phos); }
+.reference-list td.depiction { width: 150px; }
+
 .pill {
   display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px;
   border: 1px solid var(--line); color: var(--muted); background: var(--panel-2);

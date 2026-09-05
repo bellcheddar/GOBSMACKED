@@ -378,6 +378,17 @@ def api_bundle():
         campaign_yaml=bundle_svc.dump_campaign(campaign),
     )
 
+    # One line: fetch, unpack, and run. Telling someone to download a file,
+    # find it, untar it and cd into it is four chances to end up in the wrong
+    # directory, and none of those steps is interesting.
+    bundle_url = url_for("runs.download_bundle", job_id=job_id, _external=True)
+    if visibility == "private":
+        bundle_url += f"?token={owner_token}"
+    command = (f'curl -L "{bundle_url}" | tar xz && cd run_bundle_{job_id} '
+               f'&& pixi run gobsmacked')
+
+    md_cfg = campaign["md"]
+    minutes = estimate_minutes(md_cfg, campaign["docking"])
     return jsonify({
         "job_id": job_id,
         "owner_token": owner_token,
@@ -385,12 +396,23 @@ def api_bundle():
         "bundle_url": url_for("runs.download_bundle", job_id=job_id),
         "bundle_name": archive.name,
         "run_url": url_for("runs.run_page", job_id=job_id),
-        # `pixi run` solves and installs the environment it needs, so a separate
-        # install step is not the first thing to tell anyone to do. It is still
-        # in the bundle's README for anyone who wants to fetch the environment
-        # before going offline.
-        "commands": [
-            f"tar xzf {archive.name} && cd run_bundle_{job_id}",
-            "pixi run gobsmacked",
-        ],
+        "analyze_url": url_for("analyze.analyze_page"),
+        "command": command,
+        "pixi_install": "curl -fsSL https://pixi.sh/install.sh | bash",
+        "results_path": f"run_bundle_{job_id}/results/results.tar.gz",
+        "estimate_minutes": minutes,
     })
+
+
+def estimate_minutes(md_cfg: dict, docking: dict) -> int:
+    """A rough wall clock for one consumer GPU, so the command is a decision.
+
+    Measured on an M1 Max, which is slower than the CUDA cards this is aimed at:
+    docking 16 minutes and MD 54 minutes for 500 ps of a 253-residue domain.
+    Rounded, and deliberately not presented to the minute.
+    """
+    production = float(md_cfg.get("production_ps", 1000) or 0)
+    equilibration = float(md_cfg.get("equilibration_ps", 100) or 0)
+    md_minutes = (production + equilibration) / 1000.0 * 60.0
+    dock_minutes = 10 if docking.get("mode") != "flex" else 30
+    return int(round(dock_minutes + md_minutes + 5))

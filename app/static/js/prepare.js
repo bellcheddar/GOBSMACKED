@@ -407,21 +407,30 @@
         (data.note || "RCSB has no entries for this accession.") + "</p>";
       return;
     }
-    var html = "<div class='scroll' style='max-height:420px;overflow-y:auto'><table><tbody>";
+    var html = "<p class='note'>" + data.entries.length + " entries. Click one to use it: it goes " +
+      "into the box above and becomes the structure this run is judged against.</p>" +
+      "<div class='scroll reference-list'><table><thead><tr>" +
+      "<th>PDB</th><th>Ligand</th><th></th></tr></thead><tbody>";
     data.entries.forEach(function (entry) {
       var lig = entry.best_ligand || {};
-      html += "<tr data-pdb='" + entry.pdb_id + "' style='cursor:pointer'>" +
+      html += "<tr data-pdb='" + entry.pdb_id + "' tabindex='0' role='button' " +
+        "aria-label='Use " + entry.pdb_id + " as the reference'>" +
         "<td><b>" + entry.pdb_id + "</b><br><span class='muted'>" +
         (entry.resolution ? entry.resolution.toFixed(2) + " A" : "no resolution") + "</span></td>" +
         "<td>" + (lig.ccd ? lig.ccd : "apo") +
         (entry.tanimoto !== null && entry.tanimoto !== undefined ?
           "<br><span class='muted'>T " + entry.tanimoto + "</span>" : "") + "</td>" +
-        "<td style='width:150px'>" + (lig.svg || "") + "</td></tr>";
+        "<td class='depiction'>" + (lig.svg || "") + "</td></tr>";
     });
     html += "</tbody></table></div>";
     $("reference-list").innerHTML = html;
-    $("reference-list").querySelectorAll("tr").forEach(function (row) {
-      row.addEventListener("click", function () { chooseReference(row.getAttribute("data-pdb")); });
+    $("reference-list").querySelectorAll("tr[data-pdb]").forEach(function (row) {
+      var pick = function () { chooseReference(row.getAttribute("data-pdb")); };
+      row.addEventListener("click", pick);
+      // Keyboard too: the rows are the primary control in this panel.
+      row.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pick(); }
+      });
     });
     if (data.default) chooseReference(data.default);
   }
@@ -431,8 +440,17 @@
     var ccd = entry && entry.best_ligand ? entry.best_ligand.ccd : null;
     state.reference = { pdb_id: pdbId, ligand_ccd: ccd, chain: null };
     setStage(5, "done", pdbId + (ccd ? " " + ccd : " (apo)"));
-    $("reference-list").querySelectorAll("tr").forEach(function (row) {
-      row.style.background = row.getAttribute("data-pdb") === pdbId ? "var(--panel-2)" : "";
+
+    // The box and the list are one control: clicking a row fills the box, and
+    // the box is what the panel reads back to you as the current choice.
+    var box = $("reference-manual");
+    box.value = pdbId;
+    box.classList.remove("example");
+    $("reference-chosen").innerHTML =
+      "Using <b>" + pdbId + "</b>" + (ccd ? " and its ligand <b>" + ccd + "</b>" : ", which has no ligand") +
+      (entry && entry.resolution ? " at " + entry.resolution.toFixed(2) + " A" : "") + ".";
+    $("reference-list").querySelectorAll("tr[data-pdb]").forEach(function (row) {
+      row.classList.toggle("chosen", row.getAttribute("data-pdb") === pdbId);
     });
     postJSON("/api/reference_site", {
       pdb_id: pdbId, ligand_ccd: ccd,
@@ -447,6 +465,11 @@
         scope.load("reference", data.structure_url, { color: GobViewer.COLOURS.reference });
       }
     }).catch(function () { /* the site is optional: the reference still counts */ });
+  }
+
+  function useTypedReference() {
+    var id = $("reference-manual").value.trim().toUpperCase();
+    if (id) chooseReference(id);
   }
 
   function useReferenceSite() {
@@ -541,22 +564,60 @@
     } catch (err) { /* private browsing: the key is still shown below */ }
 
     $("bundle-result").innerHTML =
-      "<h3>" + data.job_id + "</h3>" +
-      "<p><a class='btn primary' href='" + data.bundle_url + "'>Download " + data.bundle_name + "</a></p>" +
-      "<pre class='cmd'>" + data.commands.join("\n") + "</pre>" +
-      "<p class='note'>Owner key, shown once. It is stored in this browser and rides inside the " +
-      "bundle, so uploading results needs no typing. Keep a copy to change visibility or delete " +
-      "the run from elsewhere.</p>" +
-      "<code class='key' id='owner-key'>" + data.owner_token + "</code>" +
-      "<button class='small' id='copy-key'>Copy key</button> " +
-      "<a class='btn small' href='" + data.run_url + "'>Open the run page</a>";
+      "<h3>Bundle ready: " + data.job_id + "</h3>" +
 
-    var copy = $("copy-key");
-    if (copy) copy.addEventListener("click", function () {
-      navigator.clipboard.writeText(data.owner_token).then(function () {
-        copy.textContent = "Copied";
+      "<p class='note'><b>The next step happens on your own computer, in a terminal, " +
+      "not on this page.</b> Folding, docking and molecular dynamics need a GPU and several " +
+      "gigabytes of memory; this server has neither. Everything below runs where you are.</p>" +
+
+      "<h3>1. Paste this into a terminal</h3>" +
+      "<pre class='cmd' id='run-command'>" + escapeHtml(data.command) + "</pre>" +
+      "<div class='row'><button class='small' id='copy-command'>Copy command</button>" +
+      "<a class='btn small fixed' href='" + data.bundle_url + "'>Or download the file</a></div>" +
+      "<p class='note'>One line, and it does the lot: fetches the bundle, unpacks it, installs " +
+      "everything it needs the first time, and runs all five stages (fold, prep, dock, MD, " +
+      "summarise). Expect roughly <b>" + data.estimate_minutes + " minutes</b> on a consumer " +
+      "GPU, most of it the molecular dynamics. It prints its own estimate before it starts.</p>" +
+
+      "<h3>2. If you do not have pixi</h3>" +
+      "<pre class='cmd'>" + escapeHtml(data.pixi_install) + "</pre>" +
+      "<p class='note'>pixi manages the run's environment so nothing is installed system-wide. " +
+      "Reopen the terminal afterwards, then run the command above. Nothing else is needed: no " +
+      "conda environment, no CUDA setup, no Python of your own.</p>" +
+
+      "<h3>3. Bring the results back</h3>" +
+      "<p class='note'>The run writes <code>" + data.results_path + "</code>. Upload that file " +
+      "on the <a href='" + data.analyze_url + "'>Analyze tab</a> and this page scores it against " +
+      "the reference. If a stage fails, fix the cause and rerun the same command: finished " +
+      "stages are skipped, so it picks up where it stopped.</p>" +
+
+      "<h3>Owner key</h3>" +
+      "<p class='note'>Shown once. It is stored in this browser and travels inside the bundle, " +
+      "so uploading results needs no typing. Keep a copy to change visibility or delete the run " +
+      "from another machine.</p>" +
+      "<code class='key' id='owner-key'>" + data.owner_token + "</code>" +
+      "<div class='row'><button class='small' id='copy-key'>Copy key</button>" +
+      "<a class='btn small fixed' href='" + data.run_url + "'>Open the run page</a></div>";
+
+    wireCopy("copy-command", data.command, "Command copied");
+    wireCopy("copy-key", data.owner_token, "Key copied");
+  }
+
+  function wireCopy(id, text, done) {
+    var button = $(id);
+    if (!button) return;
+    button.addEventListener("click", function () {
+      navigator.clipboard.writeText(text).then(function () {
+        var was = button.textContent;
+        button.textContent = done;
+        window.setTimeout(function () { button.textContent = was; }, 2000);
       });
     });
+  }
+
+  /* The command carries a URL and quotes, and goes into the DOM as text. */
+  function escapeHtml(text) {
+    return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   // --- Wiring --------------------------------------------------------------
@@ -609,13 +670,18 @@
     $("reference-search").addEventListener("click", searchReferences);
     $("reference-none").addEventListener("click", function () {
       state.reference = null;
+      $("reference-manual").value = "";
+      $("reference-chosen").textContent = "No reference: this run will not be verified.";
+      $("reference-list").querySelectorAll("tr[data-pdb]").forEach(function (row) {
+        row.classList.remove("chosen");
+      });
       setStage(5, "warn", "unverified");
       $("reference-list").innerHTML = "<p class='note'>No reference: the scorecard will show an " +
         "unverified banner and the overlay will have two states instead of three.</p>";
     });
-    $("reference-manual-btn").addEventListener("click", function () {
-      var id = $("reference-manual").value.trim().toUpperCase();
-      if (id) chooseReference(id);
+    $("reference-manual-btn").addEventListener("click", useTypedReference);
+    $("reference-manual").addEventListener("keydown", function (event) {
+      if (event.key === "Enter") { event.preventDefault(); useTypedReference(); }
     });
     $("bundle-btn").addEventListener("click", generate);
 

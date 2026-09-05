@@ -41,10 +41,13 @@ Nothing in the bundle contacts the server. The campaign file goes in, the result
 Open [gobsmacked.mdeller.com](https://gobsmacked.mdeller.com), paste a UniProt accession and a SMILES, pick a pocket, and download the bundle. Then, on a machine with a GPU:
 
 ```bash
-tar xzf run_bundle_gs_20260905_xxxxxxxxxxxx.tar.gz
-cd run_bundle_gs_20260905_xxxxxxxxxxxx
-pixi run gobsmacked          # solves, installs, and writes results/results.tar.gz
+curl -L "https://gobsmacked.mdeller.com/runs/<job-id>/bundle" | tar xz \
+  && cd run_bundle_<job-id> && pixi run gobsmacked
 ```
+
+Prepare prints that line with the job filled in and a copy button. It fetches the bundle,
+unpacks it, installs what it needs the first time and runs all five stages. If you do not have
+pixi: `curl -fsSL https://pixi.sh/install.sh | bash`.
 
 The default environment is docking and MD alone. Two extras are opt-in rather than a tax on
 every run, because between them they are about three gigabytes:
