@@ -1,0 +1,179 @@
+# Every third-party component, once. The About page's table and THIRD_PARTY.md
+# are both generated from this file, so the two cannot drift.
+#
+# `doi` is checked by `make check-refs`, which HEAD-requests each one. A DOI that
+# does not resolve is a bug, not a typo to leave in place.
+
+software:
+  # --- Prepare, on the droplet ---
+  - stage: Prepare
+    tool: UniProt
+    role: Canonical sequence, features, protein naming
+    licence: CC BY 4.0
+    repo: https://www.uniprot.org
+    doi: 10.1093/nar/gkac1052
+    reference: The UniProt Consortium 2023, Nucleic Acids Research
+  - stage: Prepare
+    tool: InterPro / Pfam
+    role: Domain assignment, and the family router that follows from it
+    licence: CC0
+    repo: https://www.ebi.ac.uk/interpro
+    doi: 10.1093/nar/gkac993
+    reference: Paysan-Lafosse et al. 2023, Nucleic Acids Research
+  - stage: Prepare
+    tool: KLIFS
+    role: 85-residue kinase pocket numbering, DFG and alphaC states
+    licence: open, attribution
+    repo: https://klifs.net
+    doi: 10.1093/nar/gkaa895
+    reference: Kanev et al. 2021, Nucleic Acids Research
+  - stage: Prepare
+    tool: GPCRdb
+    role: Ballesteros-Weinstein generic numbering, segments, microswitches
+    licence: Apache-2.0
+    repo: https://github.com/protwis
+    doi: 10.1093/nar/gkac1013
+    reference: Pandy-Szekeres et al. 2023, Nucleic Acids Research
+  - stage: Prepare
+    tool: RCSB PDB
+    role: Reference structure search, entry metadata, coordinates
+    licence: CC0
+    repo: https://www.rcsb.org
+    doi: 10.1093/nar/gkac1077
+    reference: Burley et al. 2023, Nucleic Acids Research
+  - stage: Prepare
+    tool: AlphaFold DB
+    role: Predicted starting structures and their pLDDT
+    licence: CC BY 4.0
+    repo: https://alphafold.ebi.ac.uk
+    doi: 10.1093/nar/gkad1011
+    reference: Varadi et al. 2024, Nucleic Acids Research
+  - stage: Prepare
+    tool: ESM Metagenomic Atlas
+    role: Folding short sequences without a GPU
+    licence: MIT
+    repo: https://esmatlas.com
+    doi: 10.1126/science.ade2574
+    reference: Lin et al. 2023, Science
+  - stage: Prepare
+    tool: RDKit
+    role: SMILES validation, depiction, fingerprints, symmetry-aware RMSD
+    licence: BSD-3-Clause
+    repo: https://github.com/rdkit/rdkit
+    reference: rdkit.org
+
+  # --- Run, in the bundle ---
+  - stage: Run
+    tool: ESMFold (esm)
+    role: Folding the sequence when no model exists
+    licence: MIT
+    repo: https://github.com/facebookresearch/esm
+    doi: 10.1126/science.ade2574
+    reference: Lin et al. 2023, Science
+  - stage: Run
+    tool: OpenFold
+    role: ESMFold's structure module
+    licence: Apache-2.0
+    repo: https://github.com/aqlaboratory/openfold
+    doi: 10.1038/s41592-024-02272-z
+    reference: Ahdritz et al. 2024, Nature Methods
+  - stage: Run
+    tool: PDBFixer
+    role: Missing atoms, protonation, cleaning before MD
+    licence: MIT
+    repo: https://github.com/openmm/pdbfixer
+    reference: The OpenMM project
+  - stage: Run
+    tool: PandaDock
+    role: Pose search and SE(3) GNN rescoring
+    licence: MIT
+    repo: https://github.com/pritampanda15/PandaDock
+    doi: 10.64898/2026.08.19.745667
+    reference: Panda 2026, bioRxiv
+  - stage: Run
+    tool: OpenMM
+    role: Minimisation, equilibration and production MD
+    licence: MIT
+    repo: https://github.com/openmm/openmm
+    doi: 10.1021/acs.jpcb.3c06662
+    reference: Eastman et al. 2024, Journal of Physical Chemistry B (OpenMM 8)
+  - stage: Run
+    tool: openmmforcefields / OpenFF
+    role: Ligand parameters (OpenFF 2.1.0) alongside Amber14
+    licence: MIT
+    repo: https://github.com/openforcefield/openff-toolkit
+    doi: 10.1021/acs.jctc.3c00039
+    reference: Boothroyd et al. 2023, Journal of Chemical Theory and Computation
+  - stage: Run
+    tool: MDTraj
+    role: Trajectory analysis, in the bundle and on the server
+    licence: LGPL-2.1
+    repo: https://github.com/mdtraj/mdtraj
+    doi: 10.1016/j.bpj.2015.08.015
+    reference: McGibbon et al. 2015, Biophysical Journal
+
+  # --- Analyze, on the droplet ---
+  - stage: Analyze
+    tool: PLIP
+    role: Interaction fingerprints, run as a subprocess only
+    licence: GPL-2.0
+    repo: https://github.com/pharmai/plip
+    doi: 10.1093/nar/gkab294
+    reference: Adasme et al. 2021, Nucleic Acids Research
+  - stage: Analyze
+    tool: PandaMap
+    role: 2D interaction maps and an empirical binding-energy estimate
+    licence: MIT
+    repo: https://github.com/pritampanda15/PandaMap
+    reference: Panda 2025, PandaMap
+  - stage: Analyze
+    tool: biotite
+    role: Sequence alignment behind every residue-number mapping
+    licence: BSD-3-Clause
+    repo: https://github.com/biotite-dev/biotite
+    doi: 10.1186/s12859-018-2367-z
+    reference: Kunzmann and Hamacher 2018, BMC Bioinformatics
+  - stage: Analyze
+    tool: tmtools / TM-align
+    role: Whole-chain TM-score, reported as context for the pocket fit
+    licence: MIT
+    repo: https://github.com/jvkersch/tmtools
+    doi: 10.1093/nar/gki524
+    reference: Zhang and Skolnick 2005, Nucleic Acids Research
+  - stage: Analyze
+    tool: PoseBusters (criteria)
+    role: The pose-validity checks, reimplemented on this app's own geometry
+    licence: BSD-3-Clause
+    repo: https://github.com/maabuu/posebusters
+    doi: 10.1039/D3SC04185A
+    reference: Buttenschoen et al. 2024, Chemical Science
+  - stage: Analyze
+    tool: gemmi
+    role: Structure input and output, mmCIF and PDB
+    licence: MPL-2.0
+    repo: https://github.com/project-gemmi/gemmi
+
+  # --- Browser and hosting ---
+  - stage: Browser
+    tool: "Mol*"
+    role: Every 3D view, including the three-way overlay
+    licence: MIT
+    repo: https://github.com/molstar/molstar
+    doi: 10.1093/nar/gkab314
+    reference: Sehnal et al. 2021, Nucleic Acids Research
+  - stage: Browser
+    tool: Plotly.js
+    role: Trajectory panels
+    licence: MIT
+    repo: https://github.com/plotly/plotly.js
+    reference: plotly.com
+  - stage: Hosting
+    tool: Flask, gunicorn, nginx, SQLite
+    role: The web application and its store
+    licence: BSD / MIT / public domain
+    repo: https://flask.palletsprojects.com
+  - stage: Hosting
+    tool: pixi and uv
+    role: The bundle's environment, and the server's
+    licence: BSD-3-Clause / Apache-2.0
+    repo: https://github.com/prefix-dev/pixi

@@ -1,0 +1,65 @@
+# The run bundle's environment. Nothing here is installed on the GOBSMACKED
+# server: the server is a 3.8 GB CPU droplet and this stack is torch, CUDA and
+# AmberTools. That separation is the whole point of the two-stage design.
+#
+#   pixi install
+#   pixi run gobsmacked
+#
+# python 3.11: openff-toolkit and openmmforcefields both lag the current Python
+# release on conda-forge, and 3.11 is the newest with builds across linux-64 and
+# osx-arm64. Check `pixi search openff-toolkit` before raising it.
+
+[workspace]
+name = "gobsmacked-run"
+version = "1.0.0"
+description = "Fold, dock, relax and summarise one protein-ligand complex"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64"]
+
+[dependencies]
+python = "3.11.*"
+
+# --- Structure preparation and chemistry ---
+rdkit = ">=2024.03"
+pdbfixer = "*"
+gemmi = ">=0.6.5"
+
+# --- MD ---
+openmm = ">=8.2"
+# Provides the OpenFF template generator used for the ligand. Pulls AmberTools,
+# which is about a gigabyte, and is what AM1-BCC charging actually needs; there
+# is no lighter route to correct ligand charges.
+openmmforcefields = "*"
+openff-toolkit = "*"
+mdtraj = "*"
+
+# --- Shared ---
+numpy = "*"
+scipy = "*"
+pyyaml = "*"
+pip = "*"
+
+[pypi-dependencies]
+# Docking. The [gnn] extra pulls torch-geometric for the SE(3) rescoring model;
+# `pandadock dock` works without it and run.py falls back to that mode when the
+# checkpoint cannot be fetched.
+pandadock = { version = ">=4.1", extras = ["gnn"] }
+# Folding. Only needed when the bundle carries no model_apo.pdb, which is the
+# minority of runs, but installing it conditionally would make the lock file
+# depend on the campaign.
+fair-esm = ">=2.0"
+
+[tasks]
+gobsmacked = "python run.py"
+plan = "python run.py --list"
+
+[activation.env]
+# conda-forge's scientific stack and any pip-installed package bundling its own
+# libomp will both initialise OpenMP in one process, which aborts with
+# "OMP: Error #15 ... already initialized" on macOS.
+KMP_DUPLICATE_LIB_OK = "TRUE"
+
+[target.linux-64.dependencies]
+# CUDA-enabled builds on Linux. On macOS OpenMM's OpenCL platform is used
+# instead, and torch falls back to MPS or CPU.
+cuda-version = ">=12.0"

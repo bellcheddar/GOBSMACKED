@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}GOBSMACKED: private run{% endblock %}
+{% block content %}
+<main class="deck single">
+  <section class="card">
+    <h2>This run is private</h2>
+    <p>Paste the owner key that was shown when the bundle was generated.</p>
+    <div class="row">
+      <input type="text" id="key" placeholder="32 hexadecimal characters">
+      <button class="primary fixed" id="unlock">View run</button>
+    </div>
+    <p class="note" id="message"></p>
+  </section>
+</main>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById("unlock").addEventListener("click", function () {
+  var key = document.getElementById("key").value.trim();
+  if (!key) { document.getElementById("message").textContent = "Paste the key first."; return; }
+  try {
+    var keys = JSON.parse(localStorage.getItem("gobsmacked_keys") || "{}");
+    keys["{{ job_id }}"] = key;
+    localStorage.setItem("gobsmacked_keys", JSON.stringify(keys));
+  } catch (err) { /* private browsing: the query parameter below still works */ }
+  window.location = "{{ url_for('runs.run_page', job_id=job_id) }}?token=" + encodeURIComponent(key);
+});
+</script>
+{% endblock %}

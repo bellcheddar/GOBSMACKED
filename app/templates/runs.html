@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}GOBSMACKED: runs{% endblock %}
+{% block content %}
+<main class="deck single">
+  <section class="card">
+    <h2>Runs</h2>
+    <div class="row" style="margin-bottom:14px">
+      <input type="text" id="search" placeholder="Search UniProt, ligand, PDB ID or job ID">
+      <div class="fixed">
+        <select id="family-filter">
+          <option value="">Any family</option>
+          <option value="kinase">Kinase</option>
+          <option value="gpcr">GPCR</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="fixed">
+        <select id="status-filter">
+          <option value="">Any status</option>
+          <option value="prepared">Prepared</option>
+          <option value="results_uploaded">Results uploaded</option>
+          <option value="analysed">Analysed</option>
+          <option value="failed">Failed</option>
+        </select>
+      </div>
+      <div class="fixed">
+        <select id="grade-filter">
+          <option value="">Any grade</option>
+          <option value="A">A</option><option value="B">B</option>
+          <option value="C">C</option><option value="D">D</option><option value="F">F</option>
+        </select>
+      </div>
+    </div>
+    <div class="row" style="margin-bottom:14px">
+      <input type="text" id="owner-key" placeholder="Paste an owner key to see your private runs">
+      <button class="fixed" id="owner-key-btn">Remember key</button>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th>Job</th><th>Created</th><th>Protein</th><th>Ligand</th><th>Family</th>
+          <th>Reference</th><th>Stages</th><th class="num">Score</th><th>Grade</th><th>Mode</th>
+        </tr></thead>
+        <tbody id="runs-body"><tr><td colspan="10" class="muted">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('js/runs.js') }}"></script>{% endblock %}

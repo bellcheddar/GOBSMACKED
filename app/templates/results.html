@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% set card = card %}
+{% set sc = card.scorecard %}
+{% block title %}GOBSMACKED: {{ row['job_id'] }}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ asset('vendor/molstar.css') }}">
+{% endblock %}
+
+{% block subnav %}
+<nav class="subnav">
+  <a href="#scorecard" class="current">Scorecard</a>
+  <a href="#complex">Complex</a>
+  <a href="#overlay">Overlay</a>
+  <a href="#dynamics">Dynamics</a>
+  <a href="#mode">Mode</a>
+  <a href="#report">Report</a>
+  <span style="flex:1"></span>
+  <a href="{{ url_for('runs.download_results', job_id=row['job_id']) }}">Download results</a>
+  <a href="{{ url_for('runs.download_bundle', job_id=row['job_id']) }}">Download bundle</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<main class="deck" id="scorecard">
+
+  <!-- Left column: the score -->
+  <div class="col">
+    <section class="card">
+      <h2>Score</h2>
+      {% if sc.score is not none %}
+      <div class="dial">
+        <svg viewBox="0 0 200 120" role="img" aria-label="GOBSMACK score {{ sc.score }}">
+          <path d="M20 110 A80 80 0 0 1 180 110" fill="none" stroke="var(--line)" stroke-width="14" stroke-linecap="round"/>
+          <path d="{{ dial_arc(sc.score) }}" fill="none" stroke="var(--grade-{{ sc.grade|lower }})" stroke-width="14" stroke-linecap="round"/>
+          <text x="100" y="105" text-anchor="middle" fill="var(--text)" font-size="44" font-weight="800">{{ sc.grade }}</text>
+        </svg>
+        <div class="val">{{ sc.score }}</div>
+        <div class="lab">{{ sc.label }}</div>
+      </div>
+      {% else %}
+      <div class="verdict unverified">Unverified<span>{{ sc.label }}</span></div>
+      {% endif %}
+
+      <div class="gauges">
+        {% for m in sc.metrics %}
+        <div class="g grade-{{ m.grade or 'none' }}" style="--w:{{ m.fill }}%">
+          <small>{{ m.label }}</small>
+          <b>{% if m.value is not none %}{{ '%.2f'|format(m.value) }}{{ ' ' ~ m.unit if m.unit }}{% else %}&mdash;{% endif %}</b>
+          <i></i>
+          <span class="why">{{ m.note }}</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if sc.validity.checks %}
+      <h3>Pose validity</h3>
+      <ul class="switches">
+        {% for check in sc.validity.checks %}
+        <li><span><i class="led {{ '' if check['pass'] else 'red' }}"></i>{{ check.label }}</span>
+            <span>{{ 'pass' if check['pass'] else 'fail' }}</span></li>
+        {% endfor %}
+      </ul>
+      {% if sc.validity.capped %}
+      <p class="note" style="color:var(--red)">A validity failure caps the composite at 40 whatever
+        else the run scored.</p>
+      {% endif %}
+      {% endif %}
+
+      {% if sc.unmeasured %}
+      <p class="note">Not measured, and left out of the weighted mean:
+        {{ sc.unmeasured|join(', ') }}.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Run</h2>
+      <ul class="switches">
+        <li><span>Protein</span><span>{{ row['uniprot'] or 'sequence' }}</span></li>
+        <li><span>Ligand</span><span>{{ row['ligand_name'] or card.ligand_resname }}</span></li>
+        <li><span>Family</span><span>{{ card.modes.family }}</span></li>
+        <li><span>Reference</span><span>{{ card.reference.pdb_id or 'none' }}
+          {%- if card.reference.ligand_ccd %} &middot; {{ card.reference.ligand_ccd }}{% endif %}</span></li>
+        {% if sc.tm_score %}<li><span>TM-score, whole chain</span><span>{{ sc.tm_score }}</span></li>{% endif %}
+        {% if sc.pocket_ca_atoms %}<li><span>Pocket Ca atoms fitted</span><span>{{ sc.pocket_ca_atoms }}</span></li>{% endif %}
+        <li><span>Analysis</span><span>{{ card.timings.analysis_s }} s</span></li>
+      </ul>
+      {% if owned %}
+      <h3>Owner controls</h3>
+      <div class="row">
+        <button class="small" id="toggle-visibility"
+                data-visibility="{{ row['visibility'] }}">Make {{ 'private' if row['visibility'] == 'public' else 'public' }}</button>
+        <button class="small danger" id="delete-run">Delete run</button>
+      </div>
+      <p class="note" id="owner-message">This run is {{ row['visibility'] }}.</p>
+      {% endif %}
+      {% if card.warnings %}
+      <ul class="warnings">{% for w in card.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+      {% endif %}
+    </section>
+  </div>
+
+  <!-- Centre: structures and traces -->
+  <div class="col">
+    <section class="card" id="complex">
+      <h2>Complex</h2>
+      <div class="scope" id="complex-scope">
+        <div class="viewer" id="complex-viewer"></div>
+        <div class="hud" id="complex-hud">MD-final complex</div>
+        <div class="toggles" id="complex-toggles">
+          <button data-state="pose1" aria-pressed="false">Pose 1</button>
+          <button data-state="minimised" aria-pressed="false">Minimised</button>
+          <button data-state="md_final" aria-pressed="true">MD final</button>
+        </div>
+      </div>
+      {% if card.pandamap and card.pandamap.png %}
+      <h3>PandaMap, MD-final</h3>
+      <img src="{{ url_for('runs.run_file', job_id=row['job_id'], name=card.pandamap.png) }}"
+           alt="2D interaction map of the relaxed complex" style="width:100%;border-radius:4px">
+      <p class="note">PandaMap's empirical estimate: {{ card.pandamap.dg }} kcal/mol
+        ({{ card.pandamap.interpretation }}). {{ card.pandamap.note }}</p>
+      {% endif %}
+    </section>
+
+    <section class="card" id="overlay">
+      <h2>Overlay</h2>
+      <div class="scope" id="overlay-scope">
+        <div class="viewer" id="overlay-viewer"></div>
+        <div class="hud" id="overlay-hud">pocket Ca superposition</div>
+        <div class="toggles" id="overlay-toggles">
+          <button class="model" data-state="model" aria-pressed="false">Model</button>
+          <button data-state="md_final" aria-pressed="true">MD final</button>
+          <button class="reference" data-state="reference" aria-pressed="true">Reference</button>
+        </div>
+      </div>
+      {% if card.displacements %}
+      <h3>Most displaced pocket side chains</h3>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Residue</th><th class="num">Side-chain RMSD</th>
+            <th class="num">chi1 model</th><th class="num">chi1 crystal</th><th class="num">difference</th></tr></thead>
+          <tbody>
+          {% for d in card.displacements %}
+          <tr><td>{{ d.name|title }}{{ d.reference_residue }}</td>
+            <td class="num">{{ d.sidechain_rmsd }} A</td>
+            <td class="num">{{ d.chi1_model if d.chi1_model is not none else '&mdash;'|safe }}</td>
+            <td class="num">{{ d.chi1_reference if d.chi1_reference is not none else '&mdash;'|safe }}</td>
+            <td class="num">{{ d.chi1_delta if d.chi1_delta is not none else '&mdash;'|safe }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="card" id="dynamics">
+      <h2>Dynamics</h2>
+      {% if card.dynamics.frames %}
+      <div class="plot" id="plot-ligand"></div>
+      <div class="plot" id="plot-protein"></div>
+      <div class="plot" id="plot-rmsf"></div>
+      <div class="plot" id="plot-volume"></div>
+      <div class="plot tall" id="plot-contacts"></div>
+      {% else %}
+      <p class="note">This archive holds no trajectory summary, so there are no traces to draw.</p>
+      {% endif %}
+    </section>
+
+    <section class="card" id="report">
+      <h2>Report</h2>
+      <p class="note">A printable page with the scorecard, the mode verdict, the interaction table
+        and the key traces. Printing preserves the panel colours.</p>
+      <div class="row">
+        <a class="btn" href="{{ url_for('runs.report', job_id=row['job_id']) }}">Open report</a>
+        <a class="btn" href="{{ url_for('runs.download_results', job_id=row['job_id']) }}">Download all</a>
+      </div>
+      <h3>Engine versions</h3>
+      <ul class="switches">
+        {% for name, version in (card.manifest.engine_versions or {}).items() %}
+        <li><span>{{ name }}</span><span>{{ version }}</span></li>
+        {% endfor %}
+      </ul>
+    </section>
+  </div>
+
+  <!-- Right: the mode switches -->
+  <div class="col" id="mode">
+    <section class="card">
+      <h2>Mode: {{ card.modes.family }} switches</h2>
+      {% set p = card.modes.predicted %}
+      {% set r = card.modes.reference %}
+      {% if p and not p.error %}
+        {% if card.modes.family == 'kinase' %}
+        <ul class="switches">
+          <li><span><i class="led {{ led(p.dfg, r.dfg if r else none) }}"></i>DFG</span><span>{{ p.dfg or '&mdash;'|safe }}</span></li>
+          <li><span><i class="led {{ led(p.alphac, r.alphac if r else none) }}"></i>alphaC helix</span><span>{{ p.alphac or '&mdash;'|safe }}</span></li>
+          <li><span><i class="led {{ 'off' if not p.hinge_hbonds else '' }}"></i>Hinge H-bonds</span><span>{{ p.hinge_hbonds }}</span></li>
+          <li><span><i class="led {{ 'off' if not p.gatekeeper_contact else '' }}"></i>Gatekeeper contact</span><span>{{ p.gatekeeper_residue or '&mdash;'|safe }}</span></li>
+          {% for name in ['back pocket I', 'back pocket II', 'front pocket', 'adenine'] %}
+          <li><span><i class="led {{ led(p.occupancy.get(name), r.occupancy.get(name) if r else none) }}"></i>{{ name|capitalize }}</span>
+              <span>{{ 'occupied' if p.occupancy.get(name) else 'empty' }}</span></li>
+          {% endfor %}
+          <li><span><i class="led {{ 'amber' if (p.solvent_exposed_fraction or 0) > 0.3 else '' }}"></i>Solvent exposed</span>
+              <span>{{ '%.0f%%'|format((p.solvent_exposed_fraction or 0) * 100) }} of ligand</span></li>
+        </ul>
+        {% elif card.modes.family == 'gpcr' %}
+        <ul class="switches">
+          <li><span><i class="led {{ led(p.label, r.label if r else none) }}"></i>Site</span><span>{{ p.label }}</span></li>
+          <li><span><i class="led {{ led(p.state, r.state if r else none) }}"></i>Receptor state</span><span>{{ p.state or '&mdash;'|safe }}</span></li>
+          <li><span><i class="led"></i>TM3-TM6 distance</span><span>{{ p.tm3_tm6 }} A{% if r %} vs {{ r.tm3_tm6 }} A{% endif %}</span></li>
+          {% if card.modes.npxxy_rmsd is not none %}
+          <li><span><i class="led {{ 'amber' if card.modes.npxxy_rmsd > 1.0 else '' }}"></i>NPxxY RMSD</span><span>{{ card.modes.npxxy_rmsd }} A</span></li>
+          {% endif %}
+          <li><span><i class="led"></i>Toggle switch chi1</span><span>{{ p.toggle_residue }} {{ p.toggle_chi1 }}</span></li>
+          <li><span><i class="led"></i>PIF motif</span><span>{{ p.pif_distance }} A</span></li>
+          <li><span><i class="led {{ 'off' if not p.sodium_contact else '' }}"></i>Sodium site contact</span>
+              <span>{{ p.sodium_residue or '&mdash;'|safe }}</span></li>
+        </ul>
+        {% endif %}
+        <div class="twin">
+          <div>Predicted<b>{{ p.label }}</b></div>
+          <div>{{ 'Crystal ' ~ card.reference.pdb_id if r else 'Crystal' }}<b>{{ r.label if r else 'unverified' }}</b></div>
+        </div>
+      {% else %}
+        <p class="note">{{ card.modes.note or (p.error if p else 'No classification for this target.') }}</p>
+      {% endif %}
+      {% set v = card.modes.verdict %}
+      <div class="verdict {{ 'differ' if v.match is false else ('unverified' if v.match is none else '') }}">
+        {{ v.verdict }}<span>{{ v.detail }}</span>
+      </div>
+    </section>
+
+    {% if card.interaction_table %}
+    <section class="card">
+      <h2>Interactions</h2>
+      <div class="scroll" style="max-height:460px;overflow-y:auto">
+        <table>
+          <thead><tr><th>Residue</th><th>MD final</th><th>Crystal</th></tr></thead>
+          <tbody>
+          {% for row_i in card.interaction_table %}
+          <tr>
+            <td>{{ row_i.residue }}</td>
+            <td>{% if row_i.predicted %}<span class="{{ 'tick' if row_i.shared else '' }}">{{ row_i.predicted|join(', ') }}</span>{% else %}<span class="muted">&mdash;</span>{% endif %}</td>
+            <td>{% if row_i.reference %}{{ row_i.reference|join(', ') }}{% else %}<span class="muted">&mdash;</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="note">Jaccard overlap with the crystal: pose 1
+        {{ card.jaccard.pose1 if card.jaccard.pose1 is not none else 'n/a' }}, MD final
+        {{ card.jaccard.md_final if card.jaccard.md_final is not none else 'n/a' }}.</p>
+    </section>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ asset('vendor/molstar.js') }}"></script>
+<script src="{{ asset('vendor/plotly.min.js') }}"></script>
+<script src="{{ asset('js/viewer.js') }}"></script>
+<script src="{{ asset('js/plots.js') }}"></script>
+<script id="run-data" type="application/json">{{ card_json|safe }}</script>
+<script src="{{ asset('js/results.js') }}"></script>
+{% endblock %}

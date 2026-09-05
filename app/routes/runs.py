@@ -128,6 +128,22 @@ def api_delete(job_id: str):
     return jsonify({"deleted": job_id})
 
 
+@bp.get("/runs/<job_id>/report")
+def report(job_id: str):
+    """One printable page. `?download=1` sends it as a file instead."""
+    row = _guarded(job_id)
+    if not row["scorecard_json"]:
+        abort(404)
+    card = json.loads(row["scorecard_json"])
+    html = render_template("report.html", tab="runs", row=row, card=card,
+                           job_id=job_id, generated=db.now_iso())
+    if request.args.get("download"):
+        from flask import Response
+        return Response(html, mimetype="text/html", headers={
+            "Content-Disposition": f'attachment; filename="gobsmacked_{job_id}.html"'})
+    return html
+
+
 # ---------------------------------------------------------------------------
 # Downloads
 # ---------------------------------------------------------------------------

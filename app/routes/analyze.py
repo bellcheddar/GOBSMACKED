@@ -405,5 +405,5 @@ def render_results(row, card: Optional[dict], owned: bool = False):
         return render_template("run_waiting.html", tab="runs", row=row, stages=stages,
                                job_id=row["job_id"], owned=owned)
     return render_template("results.html", tab="runs", row=row, card=card,
-                           stages=card.get("stages"), job_id=row["job_id"],
-                           owned=owned, animate=True)
+                           card_json=json.dumps(card), stages=card.get("stages"),
+                           job_id=row["job_id"], owned=owned, animate=True)

@@ -63,6 +63,37 @@ def create_app(test_config: dict | None = None) -> Flask:
         return render_template("error.html", message="Something failed on the server.",
                                fix="Try again; if it repeats, the run log is in journalctl."), 500
 
+    # Two template helpers the results page leans on. They live here rather
+    # than in the template so the arc geometry and the LED rule are testable.
+    @app.template_global()
+    def dial_arc(score: float) -> str:
+        """SVG path for the score dial's filled arc.
+
+        The track runs from (20,110) to (180,110) on a radius-80 semicircle
+        centred at (100,110). A score of 100 would put the end point exactly on
+        the start point, which SVG draws as nothing at all, so the fill stops a
+        hair short of the full sweep.
+        """
+        import math
+
+        fraction = max(0.0, min(float(score or 0), 99.9)) / 100.0
+        theta = math.radians(180.0 - 180.0 * fraction)
+        x = 100 + 80 * math.cos(theta)
+        y = 110 - 80 * math.sin(theta)
+        return f"M20 110 A80 80 0 0 1 {x:.1f} {y:.1f}"
+
+    @app.template_global()
+    def led(predicted, reference) -> str:
+        """Switch-list LED class: green when the prediction matches the crystal,
+        amber when they differ, grey when neither has the feature."""
+        if predicted is None and reference is None:
+            return "off"
+        if reference is None:
+            return "" if predicted else "off"
+        if predicted == reference:
+            return "" if predicted else "off"
+        return "amber"
+
     # Static assets are cached hard by nginx, so every reference carries a
     # ?v=<mtime> stamp. Without it a returning visitor keeps the old CSS after
     # a deploy and the change is invisible.

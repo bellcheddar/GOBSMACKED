@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}GOBSMACKED: about{% endblock %}
+{% block content %}
+<main class="deck single">
+
+  <section class="card">
+    <h2>What GOBSMACKED does</h2>
+    <p>GOBSMACKED folds, docks, relaxes and annotates a protein-ligand complex, then checks the
+      result against the experimental structure. The heavy compute happens on your own GPU, in a
+      bundle this server writes; the annotation and the verification happen here.</p>
+
+    <div class="scroll">
+      <svg viewBox="0 0 1240 500" width="100%" height="500" role="img"
+           aria-label="Pipeline: Prepare on the droplet, Run on your GPU, Analyze on the droplet">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7"
+                  orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="#3a4a63"/>
+          </marker>
+        </defs>
+
+        <!-- Lane 1: Prepare, on the droplet -->
+        <rect x="10" y="18" width="1220" height="118" rx="6" fill="#243044" stroke="#3a4a63"/>
+        <text x="24" y="40" fill="#9fb0c7" font-size="12">Prepare &middot; droplet, CPU only</text>
+        {% set prepare = [
+          ('Fetch', 'UniProt, RCSB, AlphaFold DB, ESM Atlas'),
+          ('Annotate', 'InterPro, KLIFS, GPCRdb'),
+          ('Pocket', 'Mol*, gemmi'),
+          ('Reference', 'RCSB search, RDKit Tanimoto')] %}
+        {% for name, tools in prepare %}
+        <g transform="translate({{ 24 + loop.index0 * 300 }}, 54)">
+          <rect width="272" height="66" rx="4" fill="#2c3a50" stroke="#3a4a63"/>
+          <text x="14" y="26" fill="#e8edf5" font-size="14" font-weight="600">{{ name }}</text>
+          <text x="14" y="46" fill="#9fb0c7" font-size="11">{{ tools }}</text>
+        </g>
+        {% endfor %}
+
+        <!-- File chip -->
+        <line x1="620" y1="136" x2="620" y2="168" stroke="#3a4a63" marker-end="url(#arrow)"/>
+        <rect x="520" y="168" width="200" height="30" rx="15" fill="none" stroke="#ffb454"/>
+        <text x="620" y="188" fill="#ffb454" font-size="12" text-anchor="middle">run_bundle.tar.gz</text>
+
+        <!-- Lane 2: Run, on your GPU -->
+        <rect x="10" y="212" width="1220" height="118" rx="6" fill="#2c3a50" stroke="#3a4a63"/>
+        <text x="24" y="234" fill="#9fb0c7" font-size="12">Run &middot; your machine, GPU, pixi</text>
+        {% set run = [
+          ('Fold', 'ESMFold, or skipped'),
+          ('Prep', 'PDBFixer, RDKit'),
+          ('Dock', 'PandaDock hybrid'),
+          ('MD', 'OpenMM, OpenFF'),
+          ('Summarise', 'MDTraj')] %}
+        {% for name, tools in run %}
+        <g transform="translate({{ 24 + loop.index0 * 240 }}, 248)">
+          <rect width="216" height="66" rx="4" fill="#243044" stroke="#3a4a63"/>
+          <text x="14" y="26" fill="#e8edf5" font-size="14" font-weight="600">{{ name }}</text>
+          <text x="14" y="46" fill="#9fb0c7" font-size="11">{{ tools }}</text>
+        </g>
+        {% endfor %}
+
+        <line x1="620" y1="330" x2="620" y2="362" stroke="#3a4a63" marker-end="url(#arrow)"/>
+        <rect x="530" y="362" width="180" height="30" rx="15" fill="none" stroke="#ffb454"/>
+        <text x="620" y="382" fill="#ffb454" font-size="12" text-anchor="middle">results.tar.gz</text>
+
+        <!-- Lane 3: Analyze, on the droplet -->
+        <rect x="10" y="406" width="1220" height="84" rx="6" fill="#243044" stroke="#3a4a63"/>
+        <text x="24" y="426" fill="#9fb0c7" font-size="12">Analyze &middot; droplet, CPU only</text>
+        {% set analyze = [
+          ('Superpose', 'biotite, tmtools'),
+          ('Interactions', 'PLIP, PandaMap'),
+          ('Scorecard', 'thresholds, gate'),
+          ('Mode', 'KLIFS, GPCRdb'),
+          ('Dynamics', 'MDTraj summary')] %}
+        {% for name, tools in analyze %}
+        <g transform="translate({{ 24 + loop.index0 * 240 }}, 434)">
+          <rect width="216" height="46" rx="4" fill="#2c3a50" stroke="#3a4a63"/>
+          <text x="14" y="20" fill="#e8edf5" font-size="13" font-weight="600">{{ name }}</text>
+          <text x="14" y="36" fill="#9fb0c7" font-size="11">{{ tools }}</text>
+        </g>
+        {% endfor %}
+      </svg>
+    </div>
+
+    <h3>Why the superposition is on pocket Ca atoms</h3>
+    <p>A predicted model can be excellent at the binding site and several angstroms out at a
+      disordered terminus. Superposing whole chains spreads that error into the pocket and inflates
+      the ligand RMSD, which is the one number this app exists to report honestly. Everything
+      geometric here is measured after fitting the residues within 8 A of the reference ligand,
+      and the whole-chain TM-score is reported separately as context.</p>
+
+    <h3>What the grades mean</h3>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Metric</th><th>A</th><th>B</th><th>C</th><th>D</th><th>F</th></tr></thead>
+        <tbody>
+          <tr><td>Ligand RMSD, best of pose 1 and MD-final</td><td>&le; 1.0 A</td><td>&le; 2.0</td><td>&le; 3.0</td><td>&le; 4.0</td><td>&gt; 4.0</td></tr>
+          <tr><td>Pocket Ca RMSD, MD-final</td><td>&le; 0.8</td><td>&le; 1.2</td><td>&le; 1.8</td><td>&le; 2.5</td><td>&gt; 2.5</td></tr>
+          <tr><td>chi1 agreement, MD-final</td><td>&ge; 0.85</td><td>&ge; 0.70</td><td>&ge; 0.55</td><td>&ge; 0.40</td><td>&lt; 0.40</td></tr>
+          <tr><td>PLIP Jaccard, best of pose 1 and MD-final</td><td>&ge; 0.75</td><td>&ge; 0.55</td><td>&ge; 0.40</td><td>&ge; 0.25</td><td>&lt; 0.25</td></tr>
+          <tr><td>MD stability: ligand drift, last 200 ps minus first 200 ps</td><td>&le; 0.5 A</td><td>&le; 1.0</td><td>&le; 1.5</td><td>&le; 2.5</td><td>&gt; 2.5</td></tr>
+          <tr><td>Rescue: pocket Ca RMSD before MD minus after</td><td>&ge; +0.5 A</td><td>&ge; +0.2</td><td>&ge; 0</td><td>&ge; &minus;0.3</td><td>&lt; &minus;0.3</td></tr>
+          <tr><td>Pose validity (clashes, bond lengths, chirality, box)</td><td colspan="4">pass</td><td>fail</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">The composite GOBSMACK score is the weighted mean of those grades (ligand RMSD
+      30, PLIP overlap 20, pocket Ca 15, chi1 10, stability 10, rescue 10, validity 5). A metric
+      that could not be measured drops out and the remaining weights are renormalised, which is
+      stated on the card. A validity failure caps the composite at 40. A run with no reference
+      structure gets no composite at all: there is nothing to verify it against.</p>
+  </section>
+
+  <section class="card">
+    <h2>Software and references</h2>
+    {% for stage, items in grouped %}
+    <h3>{{ stage }}</h3>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Tool</th><th>What it does here</th><th>Licence</th><th>Links</th></tr></thead>
+        <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.tool }}</td>
+          <td class="muted">{{ item.role }}</td>
+          <td>{{ item.licence }}</td>
+          <td>
+            {% if item.repo %}<a href="{{ item.repo }}">repository</a>{% endif %}
+            {% if item.doi %} &middot; <a href="https://doi.org/{{ item.doi }}">{{ item.reference or item.doi }}</a>
+            {% elif item.reference %} &middot; {{ item.reference }}{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="card">
+    <h2>Credits and licence</h2>
+    <p>GOBSMACKED {{ version }} was written by Marc C. Deller, D.Phil.
+      (<a href="mailto:marc@marcdeller.com">marc@marcdeller.com</a>,
+      <a href="https://marcdeller.com">marcdeller.com</a>). Source and issues:
+      <a href="https://github.com/bellcheddar/GOBSMACKED">github.com/bellcheddar/GOBSMACKED</a>.</p>
+    <p>The application is MIT licensed. To cite it, name the repository and the version.</p>
+    <p class="note">PLIP is GPL-2.0. GOBSMACKED runs it as a subprocess and never imports it, so no
+      GPL code is linked into this application, and PLIP is deliberately absent from the run bundle.
+      Every other component's licence is in the table above.</p>
+  </section>
+</main>
+{% endblock %}

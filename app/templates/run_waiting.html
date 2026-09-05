@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}GOBSMACKED: {{ row['job_id'] }}{% endblock %}
+{% block content %}
+<main class="deck wide">
+  <section class="card">
+    <h2>{{ row['title'] or row['job_id'] }}</h2>
+    <p class="muted">{{ row['uniprot'] or 'sequence' }} &middot; {{ row['ligand_name'] or 'ligand' }}
+      &middot; {{ row['family'] }}
+      {% if row['reference_pdb'] %}&middot; reference {{ row['reference_pdb'] }}{% endif %}</p>
+    <p>This run has a bundle but no results yet. Run it, then upload
+      <code>results.tar.gz</code> on the Analyze tab.</p>
+    <pre class="cmd">tar xzf run_bundle_{{ row['job_id'] }}.tar.gz && cd run_bundle_{{ row['job_id'] }}
+pixi install
+pixi run gobsmacked</pre>
+    <p><a class="btn" href="{{ url_for('runs.download_bundle', job_id=row['job_id']) }}">Download bundle</a>
+       <a class="btn" href="{{ url_for('analyze.analyze_page') }}">Go to Analyze</a></p>
+    {% if row['error'] %}<p class="note" style="color:var(--red)">Last attempt failed: {{ row['error'] }}</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Campaign</h2>
+    <pre class="cmd">{{ row['campaign_yaml'] }}</pre>
+  </section>
+</main>
+{% endblock %}

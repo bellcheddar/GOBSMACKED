@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}GOBSMACKED: analyse results{% endblock %}
+{% block content %}
+<main class="deck wide">
+  <section class="card">
+    <h2>Upload</h2>
+    <p>Drop the <code>results.tar.gz</code> the bundle wrote. The archive carries its own job ID
+      and owner key, so nothing else needs typing.</p>
+    <label for="archive">Results archive</label>
+    <input type="file" id="archive" accept=".tar.gz,.tgz">
+    <button class="primary" id="upload-btn" style="width:100%;margin-top:14px">Analyse</button>
+    <div id="upload-result" style="margin-top:14px"></div>
+    <h3>What happens next</h3>
+    <p class="note">The server validates the archive against the results schema, superposes the
+      predicted complex on the reference's pocket Ca atoms, runs PLIP on the pose, the relaxed
+      complex and the crystal, classifies the binding mode, reads the trajectory summary and
+      grades the run. It takes seconds, not minutes, and the answer arrives in this page.</p>
+  </section>
+  <section class="card">
+    <h2>Scope</h2>
+    <div class="scope">
+      <div class="empty"><span>Upload a results archive to see the complex.</span></div>
+    </div>
+  </section>
+</main>
+{% endblock %}
+{% block scripts %}<script src="{{ asset('js/analyze.js') }}"></script>{% endblock %}

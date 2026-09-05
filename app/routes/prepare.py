@@ -81,7 +81,24 @@ def api_fetch():
         out["chains"] = fetch_svc.structure_chains(result.structure_path)
         out["ligands"] = fetch_svc.structure_ligands(result.structure_path)
         out["structure_name"] = Path(result.structure_path).name
+        # The sequence track counts from 1; a crystal numbers however its
+        # depositor chose (1M17 runs 24 low against UniProt, from the signal
+        # peptide). Clicking residue 790 on the track has to select residue 766
+        # in that structure, so the mapping is computed here rather than assumed
+        # in the browser.
+        out["numbering"] = _numbering(result.structure_path, result.chain, result.sequence)
     return jsonify(out)
+
+
+def _numbering(structure_path: str, chain: str, sequence: str) -> dict[str, int]:
+    """Sequence position (1-based, as a string key) -> residue number in the model."""
+    from ..services import modes as modes_svc
+    from ..services import superpose as sup_svc
+
+    loaded = sup_svc.load_chain(structure_path, chain)
+    if loaded is None or not sequence:
+        return {}
+    return {str(k): v for k, v in modes_svc.map_sequence_to_structure(loaded, sequence).items()}
 
 
 @bp.get("/api/structure/<name>")

@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}GOBSMACKED: prepare a run{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ asset('vendor/molstar.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="deck">
+
+  <!-- Left: the forms -->
+  <div class="col">
+    <section class="card" id="panel-protein">
+      <h2>1. Protein</h2>
+      <label for="query">UniProt accession, PDB ID or sequence</label>
+      <input type="text" id="query" placeholder="P00533" autocomplete="off">
+      <label for="pdb-hint">Force a particular PDB entry as the starting structure (optional)</label>
+      <input type="text" id="pdb-hint" placeholder="1M17" autocomplete="off">
+      <label for="upload">Or drop your own coordinates (.pdb, .cif)</label>
+      <input type="file" id="upload" accept=".pdb,.cif,.ent,.mmcif">
+      <div class="row" style="margin-top:14px">
+        <button id="fetch-btn">Fetch</button>
+      </div>
+      <div id="protein-result" class="small muted" style="margin-top:12px"></div>
+      <ul class="warnings" id="protein-warnings"></ul>
+    </section>
+
+    <section class="card locked" id="panel-ligand">
+      <h2>3. Ligand</h2>
+      <label for="ligand-name">Name</label>
+      <input type="text" id="ligand-name" placeholder="erlotinib" autocomplete="off">
+      <label for="smiles">SMILES</label>
+      <textarea id="smiles" placeholder="COCCOc1cc2ncnc(Nc3cccc(C#C)c3)c2cc1OCCOC"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="ligand-btn">Check</button>
+        <div class="fixed">
+          <label for="ph" style="margin:0">pH</label>
+          <input type="number" id="ph" value="7.4" step="0.1" min="0" max="14" style="width:80px">
+        </div>
+      </div>
+      <div id="ligand-depiction" style="margin-top:12px"></div>
+      <div id="ligand-props" class="small muted"></div>
+    </section>
+
+    <section class="card locked" id="panel-run">
+      <h2>Run settings</h2>
+      <div class="row">
+        <div>
+          <label for="dock-mode">Docking</label>
+          <select id="dock-mode">
+            <option value="hybrid" selected>hybrid (search + GNN rescoring)</option>
+            <option value="flex">flex (flexible side chains)</option>
+            <option value="dock">dock (rigid, fastest)</option>
+          </select>
+        </div>
+        <div class="fixed">
+          <label for="num-poses">Poses</label>
+          <input type="number" id="num-poses" value="10" min="1" max="50" style="width:80px">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="production">Production MD (ps)</label>
+          <input type="number" id="production" value="1000" min="0" step="100">
+        </div>
+        <div>
+          <label for="frame-interval">Frame every (ps)</label>
+          <input type="number" id="frame-interval" value="10" min="1">
+        </div>
+      </div>
+      <label for="title">Title for the Runs table</label>
+      <input type="text" id="title" placeholder="EGFR + erlotinib against 1M17">
+      <label>Visibility</label>
+      <div class="choice" id="visibility">
+        <button data-value="public" aria-pressed="true">Public</button>
+        <button data-value="private" aria-pressed="false">Private</button>
+      </div>
+      <p class="note" id="visibility-note">This run appears in the Runs tab for anyone.</p>
+      <button class="primary" id="bundle-btn" style="width:100%;margin-top:10px">Generate bundle</button>
+      <div id="bundle-result"></div>
+    </section>
+  </div>
+
+  <!-- Centre: structure and sequence -->
+  <div class="col">
+    <section class="card">
+      <h2>Scope</h2>
+      <div class="scope" id="scope">
+        <div class="viewer" id="viewer"></div>
+        <div class="hud" id="scope-hud"></div>
+        <div class="empty" id="scope-empty">
+          <span>Fetch a protein to see it here.</span>
+        </div>
+        <div class="toggles" id="scope-toggles"></div>
+      </div>
+      <p class="note" id="pocket-hint" style="margin-top:12px">
+        Click residues in the structure or the sequence track to build the pocket. The box is the
+        selection's extent plus 8 A, floored at 18 A per side.
+      </p>
+    </section>
+
+    <section class="card locked" id="panel-track">
+      <h2>2. Sequence and annotation</h2>
+      <div class="track" id="track"></div>
+      <div id="annotation-notes" class="small muted" style="margin-top:10px"></div>
+    </section>
+
+    <section class="card locked" id="panel-pocket">
+      <h2>Pocket</h2>
+      <label for="residues">Residues (chain:number, comma separated)</label>
+      <textarea id="residues" placeholder="A:718, A:745, A:790, A:855"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button id="pocket-btn">Compute box</button>
+        <button id="pocket-from-ref">Use the reference ligand's site</button>
+        <button id="pocket-clear" class="fixed">Clear</button>
+      </div>
+      <div id="pocket-result" class="small muted" style="margin-top:10px"></div>
+    </section>
+  </div>
+
+  <!-- Right: annotation and references -->
+  <div class="col">
+    <section class="card" id="panel-annotation">
+      <h2>Family</h2>
+      <ul class="switches" id="family-switches">
+        <li><span><i class="led off"></i>Pfam</span><span>not fetched</span></li>
+      </ul>
+    </section>
+
+    <section class="card locked" id="panel-reference">
+      <h2>4. Reference structure</h2>
+      <p class="note">Ranked by how similar each entry's ligand is to yours. A crystal holding the
+        same ligand is preferred over a sharper one holding a different chemotype.</p>
+      <div class="row">
+        <input type="text" id="reference-manual" placeholder="Type a PDB ID">
+        <button class="fixed" id="reference-manual-btn">Use</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="reference-search">Search RCSB</button>
+        <button id="reference-none" class="fixed">None</button>
+      </div>
+      <div id="reference-list" style="margin-top:12px"></div>
+    </section>
+  </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ asset('vendor/molstar.js') }}"></script>
+<script src="{{ asset('js/viewer.js') }}"></script>
+<script src="{{ asset('js/sequence_track.js') }}"></script>
+<script src="{{ asset('js/prepare.js') }}"></script>
+{% endblock %}

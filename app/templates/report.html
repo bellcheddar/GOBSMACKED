@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% set sc = card.scorecard %}
+{% block title %}GOBSMACKED report: {{ row['job_id'] }}{% endblock %}
+{% block stages %}{% endblock %}
+{% block content %}
+<main class="deck single">
+  <section class="card">
+    <h2>{{ row['title'] or row['job_id'] }}</h2>
+    <p class="muted">{{ row['uniprot'] or 'sequence' }}
+      {%- if row['protein_name'] %} &middot; {{ row['protein_name'] }}{% endif %}
+      &middot; {{ row['ligand_name'] or card.ligand_resname }}
+      &middot; family {{ card.modes.family }}
+      &middot; reference {{ card.reference.pdb_id or 'none' }}
+      &middot; generated {{ generated }}</p>
+    {% if sc.score is not none %}
+    <div class="dial">
+      <svg viewBox="0 0 200 120"><path d="M20 110 A80 80 0 0 1 180 110" fill="none" stroke="var(--line)" stroke-width="14" stroke-linecap="round"/>
+        <path d="{{ dial_arc(sc.score) }}" fill="none" stroke="var(--grade-{{ sc.grade|lower }})" stroke-width="14" stroke-linecap="round"/>
+        <text x="100" y="105" text-anchor="middle" fill="var(--text)" font-size="44" font-weight="800">{{ sc.grade }}</text></svg>
+      <div class="val">{{ sc.score }}</div>
+      <div class="lab">{{ sc.label }}</div>
+    </div>
+    {% else %}
+    <div class="verdict unverified">Unverified<span>{{ sc.label }}</span></div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Scorecard</h2>
+    <table>
+      <thead><tr><th>Metric</th><th class="num">Value</th><th>Grade</th><th>Weight</th><th>What it means</th></tr></thead>
+      <tbody>
+      {% for m in sc.metrics %}
+      <tr><td>{{ m.label }}</td>
+        <td class="num">{% if m.value is not none %}{{ '%.2f'|format(m.value) }} {{ m.unit }}{% else %}&mdash;{% endif %}</td>
+        <td><span class="grade-tile {{ m.grade or 'none' }}">{{ m.grade or '&mdash;'|safe }}</span></td>
+        <td class="num">{{ m.weight }}</td>
+        <td class="muted">{{ m.note }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Binding mode</h2>
+    {% set v = card.modes.verdict %}
+    <div class="twin">
+      <div>Predicted<b>{{ (card.modes.predicted or {}).label or 'unclassified' }}</b></div>
+      <div>Crystal<b>{{ (card.modes.reference or {}).label or 'unverified' }}</b></div>
+    </div>
+    <div class="verdict {{ 'differ' if v.match is false else ('unverified' if v.match is none else '') }}">
+      {{ v.verdict }}<span>{{ v.detail }}</span>
+    </div>
+  </section>
+
+  {% if card.interaction_table %}
+  <section class="card">
+    <h2>Interactions</h2>
+    <table>
+      <thead><tr><th>Residue</th><th>MD final</th><th>Crystal</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for r in card.interaction_table %}
+      <tr><td>{{ r.residue }}</td><td>{{ r.predicted|join(', ') or '&mdash;'|safe }}</td>
+        <td>{{ r.reference|join(', ') or '&mdash;'|safe }}</td>
+        <td class="{{ 'tick' if r.status == 'match' else 'cross' }}">{{ r.status }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>Provenance</h2>
+    <table>
+      <tbody>
+      <tr><td>Job</td><td>{{ row['job_id'] }}</td></tr>
+      <tr><td>Analysis</td><td>{{ card.timings.analysis_s }} s on the server</td></tr>
+      {% for name, value in (card.manifest.engine_versions or {}).items() %}
+      <tr><td>{{ name }}</td><td>{{ value }}</td></tr>
+      {% endfor %}
+      {% for name, value in (card.manifest.timings or {}).items() %}
+      <tr><td>{{ name }} time</td><td>{{ value }} s</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="note">Cite: GOBSMACKED (github.com/bellcheddar/GOBSMACKED), PandaDock (Panda 2026,
+      doi:10.64898/2026.08.19.745667), PLIP (Adasme 2021, doi:10.1093/nar/gkab294), OpenMM
+      (Eastman 2024, doi:10.1021/acs.jpcb.3c06662), ESMFold (Lin 2023,
+      doi:10.1126/science.ade2574), KLIFS (Kanev 2021, doi:10.1093/nar/gkaa895), GPCRdb
+      (Pandy-Szekeres 2023, doi:10.1093/nar/gkac1013). Full list on the About page.</p>
+    <div class="row">
+      <a class="btn" href="?download=1">Download report (HTML)</a>
+      <a class="btn" href="{{ url_for('runs.download_results', job_id=row['job_id']) }}">Download all</a>
+    </div>
+  </section>
+</main>
+{% endblock %}
