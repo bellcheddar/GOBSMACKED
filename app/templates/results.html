@@ -81,13 +81,6 @@
         </div>
       </div>
       <p class="note" id="interaction-legend" style="margin-top:12px"></p>
-      {% if card.pandamap and card.pandamap.png %}
-      <h3>PandaMap, MD-final</h3>
-      <img src="{{ url_for('runs.run_file', job_id=row['job_id'], name=card.pandamap.png) }}"
-           alt="2D interaction map of the relaxed complex" style="width:100%;border-radius:4px">
-      <p class="note">PandaMap's empirical estimate: {{ card.pandamap.dg }} kcal/mol
-        ({{ card.pandamap.interpretation }}). {{ card.pandamap.note }}</p>
-      {% endif %}
     </section>
 
     <section class="card span-4">
@@ -111,6 +104,12 @@
       </div>
       <p class="note" id="owner-message">This run is {{ row['visibility'] }}.</p>
       {% endif %}
+      <h3>Engine versions</h3>
+      <ul class="switches">
+        {% for name, version in (card.manifest.engine_versions or {}).items() %}
+        <li><span>{{ name }}</span><span>{{ version }}</span></li>
+        {% endfor %}
+      </ul>
       {% if card.warnings %}
       <ul class="warnings">{% for w in card.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
       {% endif %}
@@ -130,8 +129,11 @@
           {% endif %}
         </div>
       </div>
-      {% if card.displacements %}
-      <h3>Most displaced pocket side chains</h3>
+    </section>
+
+    {% if card.displacements %}
+    <section class="card span-12">
+      <h2>Most displaced pocket side chains</h2>
       <div class="scroll">
         <table>
           <thead><tr><th>Residue</th><th class="num">Side-chain RMSD</th>
@@ -147,10 +149,10 @@
           </tbody>
         </table>
       </div>
-      {% endif %}
     </section>
+    {% endif %}
 
-    <section class="card span-6" id="mode">
+    <section class="card span-4" id="mode">
       <h2>Mode: {{ card.modes.family }} switches</h2>
       {% set p = card.modes.predicted %}
       {% set r = card.modes.reference %}
@@ -199,7 +201,7 @@
     </section>
 
     {% if card.interaction_table %}
-    <section class="card span-6">
+    <section class="card span-4">
       <h2>Interactions</h2>
       <div class="scroll" style="max-height:460px;overflow-y:auto">
         <table>
@@ -224,6 +226,16 @@
     </section>
     {% endif %}
 
+    <section class="card span-4">
+      <h2>Interaction map</h2>
+      {% if card.pandamap and card.pandamap.png %}
+      <img src="{{ url_for('runs.run_file', job_id=row['job_id'], name=card.pandamap.png) }}"
+           alt="2D interaction map of the relaxed complex" class="map">
+      <p class="note">PandaMap's empirical estimate: {{ card.pandamap.dg }} kcal/mol
+        ({{ card.pandamap.interpretation }}). {{ card.pandamap.note }}</p>
+      {% endif %}
+    </section>
+
     <section class="card span-12" id="dynamics">
       <h2>Dynamics</h2>
       {% if card.dynamics.frames %}
@@ -245,12 +257,6 @@
         <a class="btn" href="{{ url_for('runs.report', job_id=row['job_id']) }}">Open report</a>
         <a class="btn" href="{{ url_for('runs.download_results', job_id=row['job_id']) }}">Download all</a>
       </div>
-      <h3>Engine versions</h3>
-      <ul class="switches">
-        {% for name, version in (card.manifest.engine_versions or {}).items() %}
-        <li><span>{{ name }}</span><span>{{ version }}</span></li>
-        {% endfor %}
-      </ul>
     </section>
 </main>
 {% endblock %}

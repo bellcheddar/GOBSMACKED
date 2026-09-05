@@ -42,8 +42,9 @@
       // Mol*'s own preset resets the camera to the whole structure after the
       // load promise resolves, so focusing immediately is silently undone.
       // One frame plus a beat lands after it.
-      settle(function () { complexScope.focusLigand("md_final"); });
-      drawInteractions("md_final");
+      drawInteractions("md_final").then(function () {
+        settle(function () { complexScope.focusLigand("md_final"); });
+      });
       if (card.geometry && card.geometry.md_final) {
         var g = card.geometry.md_final;
         document.getElementById("complex-hud").textContent =
@@ -64,8 +65,9 @@
           return complexScope.load(state, fileUrl(stateFile(state)),
                                    { primary: true, color: GobViewer.COLOURS[state] || GobViewer.COLOURS.md_final });
         }).then(function () {
-          settle(function () { complexScope.focusLigand(state); });
-          drawInteractions(state);
+          drawInteractions(state).then(function () {
+            settle(function () { complexScope.focusLigand(state); });
+          });
           document.getElementById("complex-hud").textContent = state.replace("_", " ");
         });
       });
@@ -76,18 +78,20 @@
      Minimised has no PLIP run of its own, so the layer is simply absent there
      rather than showing another state's interactions. */
   function drawInteractions(state) {
-    drawPocket(state);
+    // Always returns a promise: the caller waits on it before framing the
+    // camera, and an early bare `return` here left it framing nothing and put
+    // "Cannot read properties of undefined" in the HUD.
+    if (!complexScope) return Promise.resolve();
+    var work = drawPocket(state);
     var lines = (card.interaction_lines || {})[state] || [];
     var legend = document.getElementById("interaction-legend");
-    if (!complexScope) return;
     if (!lines.length) {
       if (legend) legend.innerHTML = state === "minimised"
         ? "<span class='muted'>PLIP is run on the docked pose and the relaxed complex, not on the minimised intermediate.</span>"
         : "";
-      complexScope.hideInteractions();
-      return;
+      return work.then(function () { return complexScope.hideInteractions(); });
     }
-    complexScope.showInteractions(lines, fileUrl);
+    work = work.then(function () { return complexScope.showInteractions(lines, fileUrl); });
     if (legend) {
       legend.innerHTML = lines.map(function (entry) {
         var hex = "#" + ("000000" + entry.colour.toString(16)).slice(-6);
@@ -96,17 +100,23 @@
                entry.type + " (" + entry.count + ")</span>";
       }).join("");
     }
+    return work;
   }
 
   /* The pocket residues as sticks over the cartoon. */
   function drawPocket(state) {
-    if (!complexScope) return;
+    if (!complexScope) return Promise.resolve();
     var file = (card.pocket_sticks || {})[state];
-    complexScope.remove("pocket").then(function () {
+    return complexScope.remove("pocket").then(function () {
       if (!file) return;
+      // ligandColor as well as color: the pocket file holds disconnected
+      // residues, so Mol* classifies them as a ligand component and would
+      // otherwise paint them the ligand's pink, which is the one colour on
+      // screen that has to mean the ligand.
       return complexScope.load("pocket", fileUrl(file),
-                               { color: GobViewer.COLOURS.model, format: "pdb",
-                                 representation: "ball-and-stick" });
+                               { color: GobViewer.COLOURS.model,
+                                 ligandColor: GobViewer.COLOURS.model,
+                                 format: "pdb", representation: "ball-and-stick" });
     });
   }
 

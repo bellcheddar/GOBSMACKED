@@ -11,15 +11,28 @@
   <div class="col">
     <section class="card" id="panel-protein">
       <h2>1. Protein</h2>
+      <div class="example-banner" id="example-banner">
+        <span>Filled in with a worked example: <b>EGFR</b> (P00533, Pfam PF07714) and
+          <b>erlotinib</b>, against <b>1M17</b>. Press Fetch to follow it through, or start
+          typing to replace it.</span>
+        <button class="small" id="clear-example">Clear</button>
+      </div>
       <label for="query">UniProt accession, PDB ID or sequence</label>
-      <input type="text" id="query" placeholder="P00533" autocomplete="off">
+      <input type="text" id="query" placeholder="P00533" autocomplete="off"
+             class="example" data-example="P00533" value="P00533">
       <label for="pdb-hint">Force a particular PDB entry as the starting structure (optional)</label>
-      <input type="text" id="pdb-hint" placeholder="1M17" autocomplete="off">
+      <input type="text" id="pdb-hint" placeholder="1M17" autocomplete="off"
+             class="example" data-example="1M17" value="1M17">
+      <p class="note">Filled in, this is a redocking control: the run starts from the crystal it
+        is judged against, which is the standard positive control and the quickest way to see the
+        app work. Clear it to start from the AlphaFold model instead, which is the harder and more
+        realistic test.</p>
       <label for="upload">Or drop your own coordinates (.pdb, .cif)</label>
       <input type="file" id="upload" accept=".pdb,.cif,.ent,.mmcif">
       <label for="residue-range">Trim to a domain, optional (first-last residue)</label>
       <div class="row">
-        <input type="text" id="residue-range" placeholder="696-1022" autocomplete="off">
+        <input type="text" id="residue-range" placeholder="714-966" autocomplete="off"
+               class="example" data-example="714-966" value="714-966">
         <button class="fixed small" id="range-from-pfam" title="Use the Pfam domain the pocket sits in">From Pfam</button>
       </div>
       <div class="row" style="margin-top:14px">
@@ -32,9 +45,11 @@
     <section class="card locked" id="panel-ligand">
       <h2>3. Ligand</h2>
       <label for="ligand-name">Name</label>
-      <input type="text" id="ligand-name" placeholder="erlotinib" autocomplete="off">
+      <input type="text" id="ligand-name" placeholder="erlotinib" autocomplete="off"
+             class="example" data-example="erlotinib" value="erlotinib">
       <label for="smiles">SMILES</label>
-      <textarea id="smiles" placeholder="COCCOc1cc2ncnc(Nc3cccc(C#C)c3)c2cc1OCCOC"></textarea>
+      <textarea id="smiles" placeholder="COCCOc1cc2ncnc(Nc3cccc(C#C)c3)c2cc1OCCOC"
+        class="example" data-example="COCCOc1cc2ncnc(Nc3cccc(C#C)c3)c2cc1OCCOC">COCCOc1cc2ncnc(Nc3cccc(C#C)c3)c2cc1OCCOC</textarea>
       <div class="row" style="margin-top:10px">
         <button id="ligand-btn">Check</button>
         <div class="fixed">
@@ -73,7 +88,8 @@
         </div>
       </div>
       <label for="title">Title for the Runs table</label>
-      <input type="text" id="title" placeholder="EGFR + erlotinib against 1M17">
+      <input type="text" id="title" placeholder="EGFR + erlotinib against 1M17"
+             class="example" data-example="EGFR kinase domain + erlotinib">
       <label>Visibility</label>
       <div class="choice" id="visibility">
         <button data-value="public" aria-pressed="true">Public</button>

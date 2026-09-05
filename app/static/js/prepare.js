@@ -561,7 +561,41 @@
 
   // --- Wiring --------------------------------------------------------------
 
+  /* The example is a real value in a muted colour, not a placeholder: pressing
+     Fetch straight away runs it. The moment a field is edited it stops looking
+     like a suggestion, and the banner goes once anything has been changed. */
+  function wireExample() {
+    var fields = Array.prototype.slice.call(document.querySelectorAll("[data-example]"));
+    fields.forEach(function (field) {
+      if (!field.value) field.value = field.getAttribute("data-example");
+      var promote = function () {
+        field.classList.remove("example");
+        var banner = $("example-banner");
+        if (banner) banner.classList.add("gone");
+      };
+      field.addEventListener("input", promote);
+      field.addEventListener("paste", promote);
+      // Focus alone does not count as editing: tabbing through to look at a
+      // field should not claim the example as the user's own.
+      field.addEventListener("keydown", function (event) {
+        if (event.key !== "Tab" && event.key !== "Shift") promote();
+      });
+    });
+    var clear = $("clear-example");
+    if (clear) {
+      clear.addEventListener("click", function () {
+        fields.forEach(function (field) {
+          field.value = "";
+          field.classList.remove("example");
+        });
+        $("example-banner").classList.add("gone");
+        $("query").focus();
+      });
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
+    wireExample();
     $("fetch-btn").addEventListener("click", fetchProtein);
     $("range-from-pfam").addEventListener("click", rangeFromPfam);
     $("query").addEventListener("keydown", function (e) { if (e.key === "Enter") fetchProtein(); });

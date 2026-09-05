@@ -249,7 +249,7 @@
     // thing it is bound to, which is the half the reader is judging.
     this.plugin.managers.camera.focusLoci(
       { kind: "element-loci", structure: data, elements: elements },
-      { extraRadius: 8, minRadius: 12, durationMs: 0 });
+      { extraRadius: 12, minRadius: 20, durationMs: 0 });
     return true;
   };
 

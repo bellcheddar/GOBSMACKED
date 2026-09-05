@@ -91,6 +91,10 @@ a:hover { text-decoration: underline; }
    holes in it. */
 .deck.results { grid-template-columns: repeat(12, 1fr); align-items: stretch; }
 .span-4  { grid-column: span 4; }
+/* The 2D map is a 1,700 px square. Left to its natural size it sets the height
+   of its whole row and leaves its neighbours half empty, which is what the
+   first pass looked like. */
+.card img.map { width: 100%; max-height: 460px; object-fit: contain; border-radius: 4px; }
 .span-6  { grid-column: span 6; }
 .span-8  { grid-column: span 8; }
 .span-12 { grid-column: span 12; }
@@ -243,6 +247,22 @@ button.danger { border-color: var(--red); color: var(--red); }
 .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
 .row > * { flex: 1 1 0; min-width: 0; }
 .row > .fixed { flex: 0 0 auto; }
+
+/* A prefilled example reads as a suggestion until it is touched, then as the
+   value it always was. The distinction is only ever colour: the field really
+   does hold the text, so pressing Fetch straight away works. */
+input.example, textarea.example { color: var(--muted); font-style: italic; }
+input.example:focus, textarea.example:focus { color: var(--text); font-style: normal; }
+
+.example-banner {
+  display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px;
+  padding: 10px 12px; font-size: 12px; color: var(--muted);
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-left: 3px solid var(--phos); border-radius: 4px;
+}
+.example-banner b { color: var(--phos); font-weight: 600; }
+.example-banner button { flex: 0 0 auto; }
+.example-banner.gone { display: none; }
 
 .choice { display: flex; gap: 8px; margin-top: 8px; }
 .choice button { flex: 1; }

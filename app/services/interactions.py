@@ -170,29 +170,94 @@ def comparison_table(predicted: set[tuple[str, int]], reference: set[tuple[str, 
 # PandaMap
 # ---------------------------------------------------------------------------
 
+# The instrument-panel tokens, for the 2D map.
+PANEL = "#243044"
+PANEL_2 = "#2c3a50"
+LINE = "#3a4a63"
+PHOS = "#5de1e6"
+MUTED = "#9fb0c7"
+
+# PandaMap's residue chips are drawn with facecolor='white' hard-coded, and the
+# label inside each one carries a white outline, so no matplotlib setting can
+# darken them. They are remapped afterwards, in the image, by luminance: the
+# near-greyscale light pixels become panel colours and everything with a hue
+# survives untouched. That only works if the text is NOT near-greyscale, which
+# is why the labels are drawn in phosphor rather than in white.
+DARK_STYLE = {
+    "figure.facecolor": PANEL, "axes.facecolor": PANEL, "savefig.facecolor": PANEL,
+    "axes.edgecolor": LINE, "axes.titlecolor": MUTED,
+    "legend.facecolor": PANEL_2, "legend.edgecolor": LINE, "legend.labelcolor": MUTED,
+    "text.color": PHOS,
+}
+# Guard rails on the remap: if PandaMap's palette ever changes, a mask that
+# catches almost nothing or almost everything means the assumption has broken,
+# and the untouched figure is better than a mangled one.
+REMAP_MIN, REMAP_MAX = 0.01, 0.40
+PANDAMAP_DPI = 150
+
+
 def pandamap(structure: str | Path, out_png: str | Path,
              ligand_ccd: Optional[str] = None) -> dict[str, Any]:
-    """The 2D interaction map and PandaMap's own empirical dG."""
+    """The 2D interaction map, themed to the page, and PandaMap's empirical dG."""
     try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
         from pandamap import HybridProtLigMapper
     except ImportError:
         return {"error": "PandaMap is not installed on this server."}
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
     try:
-        mapper = HybridProtLigMapper(str(structure), ligand_resname=ligand_ccd)
-        # DSSP is an external binary the droplet does not carry; PandaMap's own
-        # solvent-accessibility fallback is used instead.
-        mapper.run_analysis(output_file=str(out_png), use_dssp=False)
-        affinity = mapper.estimate_binding_affinity()
+        with plt.rc_context(DARK_STYLE):
+            mapper = HybridProtLigMapper(str(structure), ligand_resname=ligand_ccd)
+            # DSSP is an external binary the droplet does not carry; PandaMap's
+            # own solvent-accessibility fallback is used instead.
+            mapper.run_analysis(output_file=str(out_png), use_dssp=False, dpi=PANDAMAP_DPI)
+            affinity = mapper.estimate_binding_affinity()
     except Exception as exc:
         return {"error": f"PandaMap could not read {Path(structure).name}: {exc}"}
+
+    remapped = _darken_light_greys(out_png)
     return {
         "png": out_png.name,
+        "themed": remapped,
         "dg": _as_float((affinity or {}).get("dG_estimated")) if isinstance(affinity, dict) else None,
         "interpretation": (affinity or {}).get("interpretation", "") if isinstance(affinity, dict) else "",
         "note": (affinity or {}).get("note", "") if isinstance(affinity, dict) else "",
     }
+
+
+def _darken_light_greys(path: Path) -> bool:
+    """Turn the white chips and outlines into panel colours, in place.
+
+    Only pixels that are both light and close to greyscale are touched, so every
+    coloured element (the interaction lines, the markers, the phosphor labels)
+    is left exactly as PandaMap drew it. Antialiased edges land smoothly because
+    the replacement is a ramp rather than a single colour.
+    """
+    try:
+        import numpy as np
+        from PIL import Image
+    except ImportError:
+        return False
+    try:
+        image = Image.open(path).convert("RGB")
+        a = np.asarray(image).astype(np.float32) / 255.0
+        mx, mn = a.max(axis=2), a.min(axis=2)
+        saturation = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-6), 0.0)
+        mask = (saturation < 0.15) & (mx > 0.72)
+        fraction = float(mask.mean())
+        if not (REMAP_MIN <= fraction <= REMAP_MAX):
+            return False
+        low = np.array([0x3a, 0x4a, 0x63], dtype=np.float32) / 255.0
+        high = np.array([0x2c, 0x3a, 0x50], dtype=np.float32) / 255.0
+        t = np.clip((mx - 0.72) / 0.28, 0.0, 1.0)[..., None]
+        a[mask] = (low * (1.0 - t) + high * t)[mask]
+        Image.fromarray((a * 255).astype(np.uint8)).save(path, optimize=True)
+        return True
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
