@@ -5,9 +5,33 @@ Everything in this directory was written for one campaign by
 machine, uses your GPU, and talks to nothing.
 
 ```bash
-pixi install
-pixi run gobsmacked          # writes results/results.tar.gz
+pixi run gobsmacked          # solves, installs, and writes results/results.tar.gz
 ```
+
+`pixi run` installs what it needs on first use. To fetch the environment ahead of
+time (before going offline, say), run `pixi install -e default` first.
+
+Two environments ship: `default` is docking and MD, and `fold` adds ESMFold for a
+bundle that carries no `model_apo.pdb`:
+
+```bash
+pixi run -e fold gobsmacked
+```
+
+There is no `gnn` environment, which matters if the campaign asks for
+`docking.mode: hybrid`. PandaDock's `[gnn]` extra pins `torch-scatter`, which
+publishes no wheel for macOS arm64 and needs torch importable while its own
+metadata is built, and pixi solves every declared environment before writing the
+lock file: declaring one that cannot be solved leaves you with no environment at
+all rather than a partial one. On a machine where it does resolve:
+
+```bash
+pixi add --pypi torch torch-geometric
+pixi add --pypi "pandadock[gnn]"
+```
+
+Without it the run falls back from `hybrid` to the empirical scorer and records
+that in the archive's warnings, which is a working run rather than a failed one.
 
 Then upload `results/results.tar.gz` on the Analyze tab of the site that
 generated this bundle.

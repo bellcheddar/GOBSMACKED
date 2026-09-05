@@ -150,8 +150,16 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
     pose1 = results.path("complex_pose1.pdb")
     minimised = results.path("complex_min.pdb")
     model_apo = results.path("model_apo.pdb")
-    ligand_resname = _ligand_resname(md_final or pose1)
+    # Per file, not once. PandaDock names the ligand residue in the pose complex
+    # and OpenMM names it in the relaxed one, and they need not agree: filtering
+    # PLIP on the wrong name returns an empty site rather than an error, which
+    # would read as "the docked pose makes no interactions at all".
+    ligand_names = {state: _ligand_resname(path) for state, path in
+                    (("pose1", pose1), ("minimised", minimised), ("md_final", md_final))
+                    if path is not None}
+    ligand_resname = ligand_names.get("md_final") or ligand_names.get("pose1")
     card["ligand_resname"] = ligand_resname
+    card["ligand_resnames"] = ligand_names
 
     reference_pdb = None
     if reference.get("pdb_id"):
@@ -188,7 +196,7 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
                 path, reference_pdb,
                 reference_ccd=reference.get("ligand_ccd"),
                 reference_chain=reference.get("chain") or None,
-                model_ligand_ccd=ligand_resname,
+                model_ligand_ccd=ligand_names.get(label),
                 ligand_smiles=ligand.get("smiles", ""),
             )
             geometry[label] = got
@@ -212,7 +220,7 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
     for label, path in (("pose1", pose1), ("md_final", md_final)):
         if path is None:
             continue
-        result = inter_svc.run_plip(path, ligand_resname)
+        result = inter_svc.run_plip(path, ligand_names.get(label))
         plip[label] = result
         mapping = {int(k): v for k, v in (geometry.get(label, {}).get("numbering_map") or {}).items()}
         fp = inter_svc.fingerprint(result, mapping or None)
@@ -250,14 +258,14 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
     # --- 2D map ----------------------------------------------------------
     if md_final:
         card["pandamap"] = inter_svc.pandamap(md_final, results.root / "pandamap_md_final.png",
-                                              ligand_resname)
+                                              ligand_names.get("md_final"))
     if reference_pdb:
         card["pandamap_reference"] = inter_svc.pandamap(
             reference_pdb, results.root / "pandamap_reference.png", reference.get("ligand_ccd"))
 
     # --- binding mode ----------------------------------------------------
     card["modes"] = classify_modes(family, protein, sequence, md_final, reference_pdb,
-                                   reference, ligand_resname, plip)
+                                   reference, ligand_names.get("md_final"), plip)
 
     # --- dynamics --------------------------------------------------------
     dynamics = dyn_svc.summarise(results.summary)
@@ -274,9 +282,10 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
 
     # --- scorecard -------------------------------------------------------
     ligand_rmsd = _best(final.get("ligand_rmsd"), first.get("ligand_rmsd"))
+    validity_on = "md_final" if md_final else "pose1"
     validity = score_svc.check_validity(
         md_final or pose1, ligand.get("smiles", ""), pocket.get("center"), pocket.get("box"),
-        ligand_ccd=ligand_resname) if (md_final or pose1) else {}
+        ligand_ccd=ligand_names.get(validity_on)) if (md_final or pose1) else {}
     card["scorecard"] = score_svc.composite({
         "ligand_rmsd": ligand_rmsd,
         "plip_jaccard": _best(jaccards.get("md_final"), jaccards.get("pose1"), lowest=False),

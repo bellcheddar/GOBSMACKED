@@ -50,8 +50,7 @@
 <p>Open <a href="https://gobsmacked.mdeller.com">gobsmacked.mdeller.com</a>, paste a UniProt accession and a SMILES, pick a pocket, and download the bundle. Then, on a machine with a GPU:</p>
 <pre><code class="language-bash">tar xzf run_bundle_gs_20260905_xxxxxxxxxxxx.tar.gz
 cd run_bundle_gs_20260905_xxxxxxxxxxxx
-pixi install
-pixi run gobsmacked          # writes results/results.tar.gz
+pixi run gobsmacked          # solves, installs, and writes results/results.tar.gz
 </code></pre>
 <p>The default environment is docking and MD alone. Two extras are opt-in rather than a tax on every run, because between them they are about three gigabytes:</p>
 <div class="emd-table-wrap"><table class="emd-data-table">
@@ -69,18 +68,13 @@ pixi run gobsmacked          # writes results/results.tar.gz
 <td data-label="When you need it">the usual case: the bundle carries a model and the empirical scorer is enough</td>
 </tr>
 <tr>
-<td data-label="Command"><code>pixi run -e gnn gobsmacked</code></td>
-<td data-label="Adds">PyTorch, PyTorch Geometric</td>
-<td data-label="When you need it"><code>docking.mode: hybrid</code>, for SE(3) GNN rescoring</td>
-</tr>
-<tr>
-<td data-label="Command"><code>pixi run -e full gobsmacked</code></td>
-<td data-label="Adds">the above plus ESMFold</td>
+<td data-label="Command"><code>pixi run -e fold gobsmacked</code></td>
+<td data-label="Adds">ESMFold</td>
 <td data-label="When you need it">a bundle with no <code>model_apo.pdb</code>, so the sequence has to be folded</td>
 </tr>
 </tbody>
 </table></div>
-<p><code>run.py</code> falls back from <code>hybrid</code> to <code>dock</code> when the GNN checkpoint cannot be fetched, and says so in the archive's warnings, so choosing the wrong environment degrades rather than fails.</p>
+<p>There is deliberately <strong>no</strong> <code>gnn</code> environment, even though <code>docking.mode: hybrid</code> uses one. PandaDock's <code>[gnn]</code> extra pins <code>torch-scatter</code>, which publishes no wheel for macOS arm64 and needs torch importable while its own metadata is built, and <strong>pixi solves every declared environment before it writes the lock file</strong>: shipping one that cannot be solved leaves the user with no environment at all rather than a partial one. The bundle's README says how to add it where it does resolve. Without it, <code>run.py</code> falls back from <code>hybrid</code> to the empirical scorer and records that in the archive's warnings, which is a working run rather than a failed one.</p>
 <p>Upload <code>results/results.tar.gz</code> on the Analyze tab. The whole analysis takes seconds and lands on one page.</p>
 <p>To run the web application locally:</p>
 <pre><code class="language-bash">git clone https://github.com/bellcheddar/GOBSMACKED.git

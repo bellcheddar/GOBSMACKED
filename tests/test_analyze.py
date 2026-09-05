@@ -124,3 +124,17 @@ def test_upload_rejects_something_that_is_not_an_archive(client):
                            data={"file": (io.BytesIO(b"not a tarball"), "notes.txt")},
                            content_type="multipart/form-data")
     assert response.status_code == 400
+
+
+def test_the_ligand_is_named_per_file(egfr_card):
+    """PandaDock names the ligand in the pose complex and OpenMM names it in the
+    relaxed one. Filtering PLIP on the wrong name returns an empty site rather
+    than an error, which reads as a pose that makes no interactions at all."""
+    _, card = egfr_card
+    names = card["ligand_resnames"]
+    assert set(names) >= {"pose1", "md_final"}
+    for state, name in names.items():
+        assert name, f"no ligand found in {state}"
+    # Both states produced a fingerprint, which is what the per-file name buys.
+    assert card["jaccard"]["pose1"] is not None
+    assert card["jaccard"]["md_final"] is not None

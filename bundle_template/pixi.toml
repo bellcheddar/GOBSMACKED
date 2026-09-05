@@ -47,22 +47,35 @@ pip = "*"
 # checkpoint is unavailable, and says so in the warnings.
 pandadock = ">=4.1"
 
-[feature.gnn.pypi-dependencies]
-pandadock = { version = ">=4.1", extras = ["gnn"] }
-
 # Folding, needed only when the bundle carries no model_apo.pdb. Most bundles
 # do carry one, because the server found an AlphaFold or PDB structure first.
 [feature.fold.pypi-dependencies]
 fair-esm = ">=2.0"
 
 [environments]
-# pixi run gobsmacked          dock and MD, smallest install
-# pixi run -e gnn gobsmacked   adds the GNN rescoring model
-# pixi run -e full gobsmacked  adds ESMFold as well, for a bundle with no model
-default = { solve-group = "run" }
-gnn = { features = ["gnn"], solve-group = "run" }
-fold = { features = ["fold"], solve-group = "run" }
-full = { features = ["gnn", "fold"], solve-group = "run" }
+# pixi run gobsmacked           dock and MD, the smallest install
+# pixi run -e fold gobsmacked   adds ESMFold, for a bundle with no model
+#
+# No solve-group, deliberately. Sharing one makes pixi resolve every
+# environment against a single locked set, so the default environment inherits
+# whatever the others need.
+#
+# There is no `gnn` environment here even though `docking.mode: hybrid` uses
+# one, and that is a deliberate omission rather than an oversight. PandaDock's
+# [gnn] extra pins torch-scatter, which publishes no wheel for macOS arm64 on
+# Python 3.11 and needs torch importable while its own metadata is being built.
+# pixi solves EVERY declared environment before it writes the lock file, so
+# declaring one that cannot be solved here means no lock file at all and no
+# environment of any kind: the failure is total, not partial. Add it yourself on
+# a machine where it resolves:
+#
+#   pixi add --pypi torch torch-geometric
+#   pixi add --pypi "pandadock[gnn]"
+#
+# Without it, `run.py` falls back from hybrid to the empirical scorer and says
+# so in the archive's warnings, which is a working run rather than a failed one.
+default = { features = [] }
+fold = { features = ["fold"] }
 
 [tasks]
 gobsmacked = "python run.py"

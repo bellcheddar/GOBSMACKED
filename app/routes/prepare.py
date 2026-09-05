@@ -385,9 +385,12 @@ def api_bundle():
         "bundle_url": url_for("runs.download_bundle", job_id=job_id),
         "bundle_name": archive.name,
         "run_url": url_for("runs.run_page", job_id=job_id),
+        # `pixi run` solves and installs the environment it needs, so a separate
+        # install step is not the first thing to tell anyone to do. It is still
+        # in the bundle's README for anyone who wants to fetch the environment
+        # before going offline.
         "commands": [
             f"tar xzf {archive.name} && cd run_bundle_{job_id}",
-            "pixi install",
             "pixi run gobsmacked",
         ],
     })

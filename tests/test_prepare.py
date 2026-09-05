@@ -201,3 +201,20 @@ def test_bundle_carries_no_hidden_files(client, app):
         names = [n.split("/", 1)[-1] for n in tar.getnames()]
     hidden = [n for n in names if any(part.startswith(".") for part in n.split("/") if part)]
     assert not hidden, f"hidden files in the bundle: {hidden}"
+
+
+def test_bundle_environments_do_not_share_a_solve_group():
+    """A shared solve-group makes pixi resolve every environment against one
+    locked set, so the default environment inherits the GNN extra's
+    torch-scatter and fails to install with `No module named 'torch'` while
+    building an environment that was meant not to contain torch at all."""
+    import tomllib
+
+    from app import config
+
+    manifest = tomllib.loads((config.BUNDLE_TEMPLATE_DIR / "pixi.toml").read_text())
+    environments = manifest.get("environments", {})
+    assert environments, "the bundle should offer more than one environment"
+    for name, spec in environments.items():
+        assert "solve-group" not in spec, f"{name} shares a solve group"
+    assert not (environments["default"].get("features") or [])

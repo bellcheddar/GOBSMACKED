@@ -43,8 +43,7 @@ Open [gobsmacked.mdeller.com](https://gobsmacked.mdeller.com), paste a UniProt a
 ```bash
 tar xzf run_bundle_gs_20260905_xxxxxxxxxxxx.tar.gz
 cd run_bundle_gs_20260905_xxxxxxxxxxxx
-pixi install
-pixi run gobsmacked          # writes results/results.tar.gz
+pixi run gobsmacked          # solves, installs, and writes results/results.tar.gz
 ```
 
 The default environment is docking and MD alone. Two extras are opt-in rather than a tax on
@@ -53,11 +52,16 @@ every run, because between them they are about three gigabytes:
 | Command | Adds | When you need it |
 |---|---|---|
 | `pixi run gobsmacked` | nothing | the usual case: the bundle carries a model and the empirical scorer is enough |
-| `pixi run -e gnn gobsmacked` | PyTorch, PyTorch Geometric | `docking.mode: hybrid`, for SE(3) GNN rescoring |
-| `pixi run -e full gobsmacked` | the above plus ESMFold | a bundle with no `model_apo.pdb`, so the sequence has to be folded |
+| `pixi run -e fold gobsmacked` | ESMFold | a bundle with no `model_apo.pdb`, so the sequence has to be folded |
 
-`run.py` falls back from `hybrid` to `dock` when the GNN checkpoint cannot be fetched, and
-says so in the archive's warnings, so choosing the wrong environment degrades rather than fails.
+There is deliberately **no** `gnn` environment, even though `docking.mode: hybrid` uses one.
+PandaDock's `[gnn]` extra pins `torch-scatter`, which publishes no wheel for macOS arm64 and
+needs torch importable while its own metadata is built, and **pixi solves every declared
+environment before it writes the lock file**: shipping one that cannot be solved leaves the
+user with no environment at all rather than a partial one. The bundle's README says how to add
+it where it does resolve. Without it, `run.py` falls back from `hybrid` to the empirical
+scorer and records that in the archive's warnings, which is a working run rather than a
+failed one.
 
 Upload `results/results.tar.gz` on the Analyze tab. The whole analysis takes seconds and lands on one page.
 
