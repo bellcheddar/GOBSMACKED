@@ -28,6 +28,8 @@ PADDING_NM = 1.0
 IONIC_STRENGTH_M = 0.15
 RESTRAINT_K = 1000.0            # kJ/mol/nm^2 on solute heavy atoms, released in steps
 RESTRAINT_STEPS = 5
+# What the ligand residue is called in every file this stage writes.
+LIGAND_RESIDUE_NAME = "LIG"
 
 
 def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
@@ -65,6 +67,11 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
 
     modeller = app.Modeller(receptor.topology, receptor.positions)
     ligand_topology = ligand.to_topology().to_openmm()
+    # OpenFF's topology names the ligand residue UNK, and MDTraj classifies UNK
+    # as a protein residue: `not protein` then selects nothing, and the ligand
+    # RMSD series comes back empty with no error anywhere. Name it once, here.
+    for residue in ligand_topology.residues():
+        residue.name = LIGAND_RESIDUE_NAME
     ligand_positions = ligand.conformers[0].to_openmm()
     modeller.add(ligand_topology, ligand_positions)
     solute_atoms = modeller.topology.getNumAtoms()
@@ -119,7 +126,13 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     if production_steps:
         log(f"md: production {production_ps:.0f} ps, frame every {interval_ps:.0f} ps")
         simulation.reporters.append(
-            app.DCDReporter(str(traj_dir / "traj.dcd"), interval_steps, atomSubset=solute_indices))
+            # enforcePeriodicBox=False: the subset written here IS the molecule
+            # being measured, and wrapping it into the box splits it whenever it
+            # drifts across a face. That is invisible in any single frame and
+            # shows up later as a residue that appears to fluctuate by a box
+            # length.
+            app.DCDReporter(str(traj_dir / "traj.dcd"), interval_steps,
+                            enforcePeriodicBox=False, atomSubset=solute_indices))
         simulation.reporters.append(app.StateDataReporter(
             str(results / "logs" / "md.csv"), interval_steps * 5, step=True, time=True,
             potentialEnergy=True, temperature=True, density=True, speed=True))

@@ -114,6 +114,19 @@ def main(argv=None) -> int:
                 k: v for k, v in outcome.items() if k != "warnings"}}, indent=2))
         log(f"{name}: {timings[name]:.0f} s")
 
+    # A partial rerun (--stage, --only) would otherwise report only the stages
+    # it ran, so the archive from a resumed run would claim docking took no time
+    # at all. The .done markers hold what the earlier stages actually cost.
+    for name in STAGES:
+        if name in timings:
+            continue
+        marker = done_marker(work, name)
+        if marker.exists():
+            try:
+                timings[name] = float(json.loads(marker.read_text()).get("seconds", 0.0))
+            except (json.JSONDecodeError, TypeError, ValueError):
+                continue
+
     schema.write_manifest(results, job_id, campaign_path, timings, warnings)
     missing = schema.check_complete(results)
     if missing:

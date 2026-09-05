@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -63,7 +64,13 @@ def engine_versions() -> dict[str, str]:
     try:
         out = subprocess.run(["pandadock", "--version"], capture_output=True, text=True, timeout=60)
         if out.returncode == 0:
-            versions["pandadock"] = out.stdout.strip().splitlines()[-1]
+            # PandaDock prints a banner: the version is on the line carrying a
+            # "vN.N" token, not on the last line, which is a strapline about
+            # SE(3)-equivariant scoring and was what the manifest recorded.
+            lines = [ln.strip() for ln in out.stdout.splitlines() if ln.strip()]
+            match = next((re.search(r"v?\d+\.\d+(\.\d+)?", ln) for ln in lines
+                          if re.search(r"v?\d+\.\d+(\.\d+)?", ln)), None)
+            versions["pandadock"] = match.group(0) if match else (lines[0] if lines else "installed")
     except Exception:
         pass
     return versions

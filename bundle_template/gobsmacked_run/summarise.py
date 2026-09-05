@@ -43,7 +43,7 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     log(f"summarise: {traj.n_frames} frames, {traj.n_atoms} atoms")
 
     pocket_numbers = pocket_residue_numbers(campaign)
-    ligand_atoms = top.select("not protein and not water and element != H")
+    ligand_atoms = select_ligand(top)
     protein_ca = top.select("protein and name CA")
     pocket_ca = pocket_ca_indices(top, pocket_numbers)
     if len(pocket_ca) < 4:
@@ -51,8 +51,23 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
         warnings.append("Fewer than four pocket Ca atoms matched the campaign residue list, so "
                         "the trajectory was aligned on the whole chain instead.")
 
-    # Align on the pocket, not the chain: a hinge that swings 4 A at the far end
-    # of the protein would otherwise show up as the ligand moving.
+    reimaged = reimage(traj)
+
+    # Two alignments, deliberately, because they answer different questions.
+    #
+    # The ligand and pocket metrics are measured in the POCKET frame: a hinge
+    # that swings 4 A at the far end of the protein would otherwise read as the
+    # ligand moving.
+    #
+    # RMSF is measured in the WHOLE-CHAIN frame, because md.rmsf does not align
+    # anything: it reports fluctuation about the mean of whatever frames it is
+    # given, so a trajectory aligned on 51 pocket atoms turns a whole-body
+    # rotation about the pocket into a lever arm at the termini. On this run
+    # that put the free N-terminus at 72 A of "fluctuation" inside an 84 A box.
+    # Aligned on every Ca instead, the same trajectory peaks at 3.1 A.
+    rmsf_traj = traj[:]
+    if len(protein_ca):
+        rmsf_traj.superpose(rmsf_traj, frame=0, atom_indices=protein_ca)
     traj.superpose(traj, frame=0, atom_indices=pocket_ca)
 
     interval_ps = float((campaign.get("md") or {}).get("frame_interval_ps", 10))
@@ -60,12 +75,13 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
 
     summary: dict[str, Any] = {
         "frames": traj.n_frames,
+        "reimaged": reimaged,
         "times_ps": times,
         "pocket_residues": pocket_numbers,
         "ligand_rmsd_pose1": rmsd_series(traj, ligand_atoms),
         "protein_ca_rmsd": rmsd_series(traj, protein_ca),
         "pocket_ca_rmsd": rmsd_series(traj, pocket_ca),
-        "rmsf": rmsf(traj, protein_ca, top),
+        "rmsf": rmsf(rmsf_traj, protein_ca, top),
         "pocket_volume": pocket_volume_series(traj, top, ligand_atoms, pocket_ca),
         "contacts": contact_matrix(traj, top, ligand_atoms, pocket_numbers),
     }
@@ -73,6 +89,56 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     log(f"summarise: ligand RMSD {summary['ligand_rmsd_pose1'][-1] if summary['ligand_rmsd_pose1'] else '?'} A "
         f"at the last frame")
     return {"warnings": warnings, "frames": traj.n_frames}
+
+
+# Residues MDTraj will happily call "protein" that are not the ligand, plus the
+# solvent and ion names a solute-only trajectory can still contain.
+NOT_LIGAND = set(
+    "ALA ARG ASN ASP CYS GLN GLU GLY HIS ILE LEU LYS MET PHE PRO SER THR TRP TYR VAL "
+    "HID HIE HIP CYX ASH GLH LYN MSE HOH WAT SOL NA CL K MG ZN CA SOD CLA POT".split()
+)
+
+
+def select_ligand(top) -> "np.ndarray":
+    """Heavy atoms of the docked ligand.
+
+    Not `not protein`: MDTraj classifies UNK as a protein residue, and UNK is
+    exactly what OpenMM names the ligand when it is merged in from an OpenFF
+    topology. That selection returned zero atoms on the first real run and the
+    ligand RMSD series came back empty, with nothing in the log but a question
+    mark. The largest residue that is not a standard amino acid, water or ion is
+    the ligand.
+    """
+    best, best_size = None, 0
+    for residue in top.residues:
+        if residue.name.upper() in NOT_LIGAND:
+            continue
+        heavy = [a.index for a in residue.atoms if a.element.symbol != "H"]
+        if len(heavy) > best_size:
+            best, best_size = heavy, len(heavy)
+    return np.array(best if best else [], dtype=int)
+
+
+def reimage(traj):
+    """Undo periodic wrapping, anchoring on the largest molecule.
+
+    MDTraj's own anchor heuristic looks for a molecule with MORE atoms than the
+    largest one, which is unsatisfiable for a protein plus one ligand and raises
+    rather than returning. Naming the anchor sidesteps that. Without this a
+    ligand that crosses a boundary sits a box length from its protein, and the
+    contact map still looks correct because compute_contacts applies the minimum
+    image convention internally while the distances do not.
+    """
+    if traj.unitcell_vectors is None:
+        return False
+    try:
+        molecules = traj.topology.find_molecules()
+        if not molecules:
+            return False
+        traj.image_molecules(inplace=True, anchor_molecules=[max(molecules, key=len)])
+        return True
+    except (ValueError, RuntimeError, IndexError):
+        return False
 
 
 def rmsd_series(traj, indices) -> list[float]:
@@ -91,7 +157,8 @@ def rmsf(traj, ca_indices, top) -> dict[str, list]:
         return {"residues": [], "values": []}
     values = md.rmsf(traj, traj, 0, atom_indices=ca_indices) * 10.0
     residues = [int(top.atom(i).residue.resSeq) for i in ca_indices]
-    return {"residues": residues, "values": [round(float(v), 3) for v in values]}
+    return {"residues": residues, "values": [round(float(v), 3) for v in values],
+            "aligned_on": "all protein Ca"}
 
 
 def pocket_ca_indices(top, numbers: list[int]) -> np.ndarray:
