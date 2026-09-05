@@ -374,8 +374,18 @@ pre.cmd {
 .warnings li { margin-bottom: 4px; }
 
 /* --- Sequence track --------------------------------------------------- */
-.track { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; }
+/* The track itself no longer scrolls: the chips choose a range that fits, and
+   only the strip inside scrolls if a chosen range is still too wide. */
+.track { width: 100%; min-width: 0; max-width: 100%; }
+.track-scroll { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; }
 .track svg { display: block; }
+.track-views { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.track-views .chip {
+  font: inherit; font-size: 11px; padding: 3px 9px; border-radius: 3px; cursor: pointer;
+  background: var(--panel-2); color: var(--muted); border: 1px solid var(--line);
+}
+.track-views .chip:hover { color: var(--text); }
+.track-views .chip[aria-pressed="true"] { border-color: var(--phos); color: var(--phos); }
 .track .cell { fill: var(--panel-2); }
 .track .cell.selected { fill: var(--phos); }
 .track .cell:hover { fill: var(--grey); }
