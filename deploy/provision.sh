@@ -25,10 +25,12 @@ echo "==> GOBSMACKED provisioning for ${SERVER_NAME}"
 echo "==> Installing system packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-# openbabel is PLIP's dependency and builds from source without the -dev
-# headers, which the droplet does not have the memory to do.
+# No libopenbabel-dev and no swig: PLIP's openbabel dependency ships manylinux
+# wheels for every Python this box would run (checked on PyPI, cp310 to cp312),
+# so pip never builds it from source. Installing the headers anyway would add
+# a few hundred megabytes to a disk already at 78 %.
 apt-get install -y -qq python3-venv python3-pip python3-dev build-essential \
-  nginx certbot python3-certbot-nginx rsync libopenbabel-dev swig
+  nginx certbot python3-certbot-nginx rsync
 
 echo "==> Creating service user '${APP_USER}'"
 id -u "$APP_USER" &>/dev/null || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin "$APP_USER"
