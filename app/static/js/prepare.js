@@ -459,41 +459,93 @@
     if (data.default) chooseReference(data.default);
   }
 
-  function chooseReference(pdbId) {
-    var entry = state.references.filter(function (e) { return e.pdb_id === pdbId; })[0];
-    var ccd = entry && entry.best_ligand ? entry.best_ligand.ccd : null;
-    state.reference = { pdb_id: pdbId, ligand_ccd: ccd, chain: null };
-    setStage(STAGE.verify, "ready", pdbId + (ccd ? " and its ligand " + ccd : ", apo"));
-
-    // The box and the list are one control: clicking a row fills the box, and
-    // the box is what the panel reads back to you as the current choice.
-    var box = $("reference-manual");
-    box.value = pdbId;
-    box.classList.remove("example");
-    $("reference-chosen").innerHTML =
-      "Using <b>" + pdbId + "</b>" + (ccd ? " and its ligand <b>" + ccd + "</b>" : ", which has no ligand") +
-      (entry && entry.resolution ? " at " + entry.resolution.toFixed(2) + " A" : "") + ".";
+  function markChosenRow(pdbId) {
     $("reference-list").querySelectorAll("tr[data-pdb]").forEach(function (row) {
       row.classList.toggle("chosen", row.getAttribute("data-pdb") === pdbId);
     });
+  }
+
+  /* Choosing a reference is a question for RCSB, not something the page can
+     answer from what it happens to have in memory.
+
+     It used to answer from `state.references`, which is empty until Search RCSB
+     has been pressed, so typing a PDB ID and pressing Use reported "1M17, which
+     has no ligand" for a structure containing erlotinib. The server was asked
+     anyway and did find AQ4, but only the internal state was corrected: the
+     sentence on screen and the rail kept the wrong answer, and a bad PDB ID was
+     swallowed entirely. Nothing is claimed here until the server has replied. */
+  function chooseReference(pdbId) {
+    var box = $("reference-manual");
+    box.value = pdbId;
+    box.classList.remove("example");
+    markChosenRow(pdbId);
+
+    var known = (state.references.filter(function (e) { return e.pdb_id === pdbId; })[0] || {});
+    var hint = known.best_ligand ? known.best_ligand.ccd : null;
+
+    state.reference = null;
+    $("reference-chosen").innerHTML = "Checking <b>" + pdbId + "</b> with RCSB...";
+    setStage(STAGE.verify, "pending", "checking " + pdbId);
+
     postJSON("/api/reference_site", {
-      pdb_id: pdbId, ligand_ccd: ccd,
+      pdb_id: pdbId, ligand_ccd: hint,
       structure_name: state.protein && state.protein.structure_name,
       chain: state.protein && state.protein.chain,
     }).then(function (data) {
-      state.reference.chain = (data.chains && data.chains.length) ? data.chains[0].chain : null;
-      state.reference.ligand_ccd = data.ligand_ccd;
-      state.reference.site_residues = data.residues;
-      state.reference.structure_url = data.structure_url;
+      var ccd = data.ligand_ccd || null;
+      var resolution = data.resolution;
+      state.reference = {
+        pdb_id: pdbId, ligand_ccd: ccd,
+        chain: (data.chains && data.chains.length) ? data.chains[0].chain : null,
+        resolution: resolution,
+        site_residues: data.residues,
+        structure_url: data.structure_url,
+      };
+
+      if (ccd) {
+        $("reference-chosen").innerHTML =
+          "Using <b>" + pdbId + "</b> and its ligand <b>" + ccd + "</b>" +
+          (resolution ? " at " + resolution.toFixed(2) + " A" : "") + ". " +
+          (data.residues || []).length + " residues line its site.";
+        setStage(STAGE.verify, "ready",
+                 pdbId + " and its ligand " + ccd +
+                 (resolution ? ", " + resolution.toFixed(2) + " A" : ""));
+      } else {
+        // A reference with nothing bound defines no pocket, so there is nothing
+        // to superpose on and nothing to compare the pose to. Say so here
+        // rather than let the run come back unverified with no explanation.
+        $("reference-chosen").innerHTML =
+          "<b>" + pdbId + "</b> has no bound ligand, so there is no site to score against and " +
+          "this run would come back unverified. Pick a holo entry, or use it as the apo " +
+          "reference above instead.";
+        setStage(STAGE.verify, "optional", pdbId + " is apo: nothing to score against");
+      }
+
       if (scope && data.structure_url) {
         scope.load("reference", data.structure_url, { color: GobViewer.COLOURS.reference });
       }
-    }).catch(function () { /* the site is optional: the reference still counts */ });
+    }).catch(function (err) {
+      state.reference = null;
+      markChosenRow(null);
+      $("reference-chosen").innerHTML =
+        "<span class='failed'>" + err.message + "</span>";
+      setStage(STAGE.verify, "optional", "no reference: " + pdbId + " could not be used");
+    });
   }
 
   function useTypedReference() {
     var id = $("reference-manual").value.trim().toUpperCase();
-    if (id) chooseReference(id);
+    if (!id) {
+      $("reference-chosen").innerHTML = "<span class='failed'>Type a PDB ID first.</span>";
+      return;
+    }
+    if (!/^[0-9][A-Z0-9]{3}$/.test(id)) {
+      $("reference-chosen").innerHTML =
+        "<span class='failed'>" + id + " is not a PDB ID: they are four characters, " +
+        "beginning with a digit.</span>";
+      return;
+    }
+    chooseReference(id);
   }
 
   function useReferenceSite() {
@@ -698,9 +750,7 @@
       state.reference = null;
       $("reference-manual").value = "";
       $("reference-chosen").textContent = "No reference: this run will not be verified.";
-      $("reference-list").querySelectorAll("tr[data-pdb]").forEach(function (row) {
-        row.classList.remove("chosen");
-      });
+      markChosenRow(null);
       setStage(STAGE.verify, "optional", "unverified: no reference chosen");
       $("reference-list").innerHTML = "<p class='note'>No reference: the scorecard will show an " +
         "unverified banner and the overlay will have two states instead of three.</p>";
