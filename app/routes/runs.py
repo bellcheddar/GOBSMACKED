@@ -192,5 +192,6 @@ def run_file(job_id: str, name: str):
     mimetypes = {".pdb": "chemical/x-pdb", ".cif": "chemical/x-cif",
                  ".json": "application/json", ".png": "image/png",
                  ".sdf": "chemical/x-mdl-sdfile", ".csv": "text/csv",
-                 ".dcd": "application/octet-stream", ".log": "text/plain"}
+                 ".dcd": "application/octet-stream", ".log": "text/plain",
+                 ".mp4": "video/mp4", ".webp": "image/webp"}
     return send_file(target, mimetype=mimetypes.get(target.suffix, "application/octet-stream"))

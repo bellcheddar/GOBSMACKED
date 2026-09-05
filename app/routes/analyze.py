@@ -28,6 +28,7 @@ from ..services import fetch as fetch_svc
 from ..services import ingest as ingest_svc
 from ..services import interactions as inter_svc
 from ..services import modes as modes_svc
+from ..services import movie as movie_svc
 from ..services import scorecard as score_svc
 from ..services import superpose as sup_svc
 
@@ -343,6 +344,22 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
             ligand_resname=ligand_names.get("md_final"), smiles=ligand.get("smiles", ""))
         dynamics["ligand_rmsd_reference"] = trace
     card["dynamics"] = dynamics
+
+    # --- the clip --------------------------------------------------------
+    # Rendered from the same trajectory the traces come from, and treated as
+    # decoration: a failure here leaves a note in the panel and changes no
+    # number on the page, so it must never take the analysis down with it.
+    if results.path("traj/traj.dcd"):
+        try:
+            card["motion"] = movie_svc.render(
+                results.root / "traj" / "topology.pdb", results.root / "traj" / "traj.dcd",
+                results.root / "motion.mp4", results.root / "motion_poster.webp",
+                ligand_resname=ligand_names.get("md_final"),
+                times_ps=(results.summary or {}).get("times_ps"))
+        except Exception as exc:                       # noqa: BLE001 - decorative, never fatal
+            card["motion"] = {"error": f"The clip could not be rendered: {exc}"}
+    else:
+        card["motion"] = {"error": "No trajectory in the archive, so there is nothing to play."}
 
     # --- scorecard -------------------------------------------------------
     ligand_rmsd = _best(final.get("ligand_rmsd"), first.get("ligand_rmsd"))

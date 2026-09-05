@@ -9,10 +9,11 @@
 {% block subnav %}
 <nav class="subnav">
   <a href="#scorecard" class="current">Scorecard</a>
+  <a href="#motion">Motion</a>
   <a href="#complex">Complex</a>
   <a href="#overlay">Overlay</a>
-  <a href="#dynamics">Dynamics</a>
   <a href="#mode">Mode</a>
+  <a href="#dynamics">Dynamics</a>
   <a href="#report">Report</a>
   <span style="flex:1"></span>
   <a href="{{ url_for('runs.download_results', job_id=row['job_id']) }}">Download results</a>
@@ -72,52 +73,28 @@
     </section>
 
 
-    <section class="card span-6" id="mode">
-      <h2>Mode: {{ card.modes.family }} switches</h2>
-      {% set p = card.modes.predicted %}
-      {% set r = card.modes.reference %}
-      {% if p and not p.error %}
-        {% if card.modes.family == 'kinase' %}
-        <ul class="switches">
-          <li><span><i class="led {{ led(p.dfg, r.dfg if r else none) }}"></i>DFG</span><span>{{ p.dfg or '&mdash;'|safe }}</span></li>
-          <li><span><i class="led {{ led(p.alphac, r.alphac if r else none) }}"></i>alphaC helix</span><span>{{ p.alphac or '&mdash;'|safe }}</span></li>
-          <li><span><i class="led {{ 'off' if not p.hinge_hbonds else '' }}"></i>Hinge H-bonds</span><span>{{ p.hinge_hbonds }}</span></li>
-          <li><span><i class="led {{ 'off' if not p.gatekeeper_contact else '' }}"></i>Gatekeeper contact</span><span>{{ p.gatekeeper_residue or '&mdash;'|safe }}</span></li>
-          {# Labels are spelled out rather than filtered: |capitalize lowercases
-             the rest of the string and turns "back pocket II" into "Back pocket ii". #}
-          {% for name, label in [('back pocket I', 'Back pocket I'), ('back pocket II', 'Back pocket II'),
-                                 ('front pocket', 'Front pocket'), ('adenine', 'Adenine pocket')] %}
-          <li><span><i class="led {{ led(p.occupancy.get(name), r.occupancy.get(name) if r else none) }}"></i>{{ label }}</span>
-              <span>{{ 'occupied' if p.occupancy.get(name) else 'empty' }}</span></li>
-          {% endfor %}
-          <li><span><i class="led {{ 'amber' if (p.solvent_exposed_fraction or 0) > 0.3 else '' }}"></i>Solvent exposed</span>
-              <span>{{ '%.0f%%'|format((p.solvent_exposed_fraction or 0) * 100) }} of ligand</span></li>
-        </ul>
-        {% elif card.modes.family == 'gpcr' %}
-        <ul class="switches">
-          <li><span><i class="led {{ led(p.label, r.label if r else none) }}"></i>Site</span><span>{{ p.label }}</span></li>
-          <li><span><i class="led {{ led(p.state, r.state if r else none) }}"></i>Receptor state</span><span>{{ p.state or '&mdash;'|safe }}</span></li>
-          <li><span><i class="led"></i>TM3-TM6 distance</span><span>{{ p.tm3_tm6 }} A{% if r %} vs {{ r.tm3_tm6 }} A{% endif %}</span></li>
-          {% if card.modes.npxxy_rmsd is not none %}
-          <li><span><i class="led {{ 'amber' if card.modes.npxxy_rmsd > 1.0 else '' }}"></i>NPxxY RMSD</span><span>{{ card.modes.npxxy_rmsd }} A</span></li>
-          {% endif %}
-          <li><span><i class="led"></i>Toggle switch chi1</span><span>{{ p.toggle_residue }} {{ p.toggle_chi1 }}</span></li>
-          <li><span><i class="led"></i>PIF motif</span><span>{{ p.pif_distance }} A</span></li>
-          <li><span><i class="led {{ 'off' if not p.sodium_contact else '' }}"></i>Sodium site contact</span>
-              <span>{{ p.sodium_residue or '&mdash;'|safe }}</span></li>
-        </ul>
-        {% endif %}
-        <div class="twin">
-          <div>Predicted<b>{{ p.label }}</b></div>
-          <div>{{ 'Crystal ' ~ card.reference.pdb_id if r else 'Crystal' }}<b>{{ r.label if r else 'unverified' }}</b></div>
-        </div>
+    <section class="card span-6" id="motion">
+      <h2>Motion</h2>
+      {% set mv = card.motion or {} %}
+      {% if mv.mp4 %}
+      {# No <source> and no src: clip.js attaches the file after window.load, so a
+         500 kB video never competes with Mol* and Plotly for bandwidth during
+         first paint, and a visitor who has asked for reduced motion never
+         downloads it at all. The poster is the first frame, so with JavaScript
+         off the panel still shows the complex it would have animated. #}
+      <video class="clip" muted loop playsinline preload="none"
+             poster="{{ url_for('runs.run_file', job_id=row['job_id'], name=mv.poster) }}"
+             data-src="{{ url_for('runs.run_file', job_id=row['job_id'], name=mv.mp4) }}"
+             aria-label="The molecular dynamics run played back: the docked ligand moving inside
+                         the pocket, drawn as a C-alpha trace with the ligand in cyan"></video>
+      <p class="note">{{ mv.frames }} frames of the production run, {{ mv.seconds }} s, played
+        forwards then backwards: a trajectory does not loop, so a straight cut back to frame one
+        would read as a glitch rather than as data. The pose is cyan, the
+        {{ mv.pocket_residues }} residues lining its site are picked out in white, and every frame
+        is superposed on the protein so the ligand is the thing seen to move.</p>
       {% else %}
-        <p class="note">{{ card.modes.note or (p.error if p else 'No classification for this target.') }}</p>
+      <p class="note">{{ mv.error or 'No trajectory in this archive, so there is nothing to play.' }}</p>
       {% endif %}
-      {% set v = card.modes.verdict %}
-      <div class="verdict {{ 'differ' if v.match is false else ('unverified' if v.match is none else '') }}">
-        {{ v.verdict }}<span>{{ v.detail }}</span>
-      </div>
     </section>
 
 
@@ -241,6 +218,55 @@
       <p class="note">PandaMap's empirical estimate: {{ card.pandamap.dg }} kcal/mol
         ({{ card.pandamap.interpretation }}). {{ card.pandamap.note }}</p>
       {% endif %}
+    </section>
+
+
+    <section class="card span-12" id="mode">
+      <h2>Mode: {{ card.modes.family }} switches</h2>
+      {% set p = card.modes.predicted %}
+      {% set r = card.modes.reference %}
+      {% if p and not p.error %}
+        {% if card.modes.family == 'kinase' %}
+        <ul class="switches">
+          <li><span><i class="led {{ led(p.dfg, r.dfg if r else none) }}"></i>DFG</span><span>{{ p.dfg or '&mdash;'|safe }}</span></li>
+          <li><span><i class="led {{ led(p.alphac, r.alphac if r else none) }}"></i>alphaC helix</span><span>{{ p.alphac or '&mdash;'|safe }}</span></li>
+          <li><span><i class="led {{ 'off' if not p.hinge_hbonds else '' }}"></i>Hinge H-bonds</span><span>{{ p.hinge_hbonds }}</span></li>
+          <li><span><i class="led {{ 'off' if not p.gatekeeper_contact else '' }}"></i>Gatekeeper contact</span><span>{{ p.gatekeeper_residue or '&mdash;'|safe }}</span></li>
+          {# Labels are spelled out rather than filtered: |capitalize lowercases
+             the rest of the string and turns "back pocket II" into "Back pocket ii". #}
+          {% for name, label in [('back pocket I', 'Back pocket I'), ('back pocket II', 'Back pocket II'),
+                                 ('front pocket', 'Front pocket'), ('adenine', 'Adenine pocket')] %}
+          <li><span><i class="led {{ led(p.occupancy.get(name), r.occupancy.get(name) if r else none) }}"></i>{{ label }}</span>
+              <span>{{ 'occupied' if p.occupancy.get(name) else 'empty' }}</span></li>
+          {% endfor %}
+          <li><span><i class="led {{ 'amber' if (p.solvent_exposed_fraction or 0) > 0.3 else '' }}"></i>Solvent exposed</span>
+              <span>{{ '%.0f%%'|format((p.solvent_exposed_fraction or 0) * 100) }} of ligand</span></li>
+        </ul>
+        {% elif card.modes.family == 'gpcr' %}
+        <ul class="switches">
+          <li><span><i class="led {{ led(p.label, r.label if r else none) }}"></i>Site</span><span>{{ p.label }}</span></li>
+          <li><span><i class="led {{ led(p.state, r.state if r else none) }}"></i>Receptor state</span><span>{{ p.state or '&mdash;'|safe }}</span></li>
+          <li><span><i class="led"></i>TM3-TM6 distance</span><span>{{ p.tm3_tm6 }} A{% if r %} vs {{ r.tm3_tm6 }} A{% endif %}</span></li>
+          {% if card.modes.npxxy_rmsd is not none %}
+          <li><span><i class="led {{ 'amber' if card.modes.npxxy_rmsd > 1.0 else '' }}"></i>NPxxY RMSD</span><span>{{ card.modes.npxxy_rmsd }} A</span></li>
+          {% endif %}
+          <li><span><i class="led"></i>Toggle switch chi1</span><span>{{ p.toggle_residue }} {{ p.toggle_chi1 }}</span></li>
+          <li><span><i class="led"></i>PIF motif</span><span>{{ p.pif_distance }} A</span></li>
+          <li><span><i class="led {{ 'off' if not p.sodium_contact else '' }}"></i>Sodium site contact</span>
+              <span>{{ p.sodium_residue or '&mdash;'|safe }}</span></li>
+        </ul>
+        {% endif %}
+        <div class="twin">
+          <div>Predicted<b>{{ p.label }}</b></div>
+          <div>{{ 'Crystal ' ~ card.reference.pdb_id if r else 'Crystal' }}<b>{{ r.label if r else 'unverified' }}</b></div>
+        </div>
+      {% else %}
+        <p class="note">{{ card.modes.note or (p.error if p else 'No classification for this target.') }}</p>
+      {% endif %}
+      {% set v = card.modes.verdict %}
+      <div class="verdict {{ 'differ' if v.match is false else ('unverified' if v.match is none else '') }}">
+        {{ v.verdict }}<span>{{ v.detail }}</span>
+      </div>
     </section>
 
 

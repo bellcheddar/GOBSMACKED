@@ -29,8 +29,12 @@ apt-get update -qq
 # wheels for every Python this box would run (checked on PyPI, cp310 to cp312),
 # so pip never builds it from source. Installing the headers anyway would add
 # a few hundred megabytes to a disk already at 78 %.
+# ffmpeg encodes the trajectory clip on the results page: libx264 is the only
+# encoder asked for, and the analysis degrades to a note in the panel rather
+# than an error if the binary is missing. Measured at about 1 GB installed on
+# a box that was at 79 %.
 apt-get install -y -qq python3-venv python3-pip python3-dev build-essential \
-  nginx certbot python3-certbot-nginx rsync
+  nginx certbot python3-certbot-nginx rsync ffmpeg
 
 echo "==> Creating service user '${APP_USER}'"
 id -u "$APP_USER" &>/dev/null || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin "$APP_USER"
