@@ -1,0 +1,12 @@
+# Drop the results archive of old public runs, keeping everything that makes the
+# Runs row and the report useful. Triggered nightly by gobsmacked-prune.timer.
+[Unit]
+Description=GOBSMACKED nightly prune of old results archives
+
+[Service]
+Type=oneshot
+User=gobsmacked
+Group=gobsmacked
+WorkingDirectory=/opt/gobsmacked
+EnvironmentFile=-/opt/gobsmacked/.env
+ExecStart=/opt/gobsmacked/.venv/bin/python /opt/gobsmacked/scripts/prune.py

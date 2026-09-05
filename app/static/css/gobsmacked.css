@@ -150,6 +150,20 @@ a:hover { text-decoration: underline; }
 .toggles button.reference[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); }
 .toggles button.apo[aria-pressed="true"] { border-color: var(--purple); color: var(--purple); }
 
+/* Mol*'s own viewport chrome. The Viewer options that claim to hide these
+   (viewportShowControls and friends) do not in 5.x, and a floating toolbar of
+   unlabelled icons is not part of this design. */
+.scope .msp-viewport-controls,
+.scope .msp-viewport-top-left-controls,
+.scope .msp-hover-info { display: none !important; }
+/* Mol* paints .msp-default-bg (#eeece7, a cream) behind its canvas, which is
+   what shows through a transparent WebGL clear colour. Both have to go for the
+   scope's own grid to be the background. */
+.scope canvas,
+.scope .msp-plugin-content,
+.scope .msp-default-bg,
+.scope .msp-viewport { background: transparent !important; }
+
 /* --- Switch list ------------------------------------------------------ */
 .switches { list-style: none; margin: 0; padding: 0; }
 .switches li {

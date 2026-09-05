@@ -1,0 +1,28 @@
+# systemd unit for the GOBSMACKED web app (gunicorn behind nginx).
+# Installed to /etc/systemd/system/ by provision.sh.
+[Unit]
+Description=GOBSMACKED web app (gunicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=gobsmacked
+Group=gobsmacked
+WorkingDirectory=/opt/gobsmacked
+EnvironmentFile=-/opt/gobsmacked/.env
+ExecStart=/opt/gobsmacked/.venv/bin/gunicorn --config /opt/gobsmacked/deploy/gunicorn.conf.py wsgi:app
+Restart=on-failure
+RestartSec=3
+# An analysis that allocates without bound is killed rather than taking the
+# droplet's other apps with it. The trajectory budget in dynamics.py is set so
+# the largest permitted job fits well inside this.
+MemoryMax=1400M
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/gobsmacked
+
+[Install]
+WantedBy=multi-user.target

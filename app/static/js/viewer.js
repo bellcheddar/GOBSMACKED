@@ -41,6 +41,28 @@
     pose1: 0x7ee2a8,
   };
 
+  // The ligand's colour in every pane: warm, and off the scale the protein
+  // states are drawn from, so it never reads as a fourth state.
+  var LIGAND = 0xff5c8a;
+
+  var NON_LIGAND = { HOH: 1, DOD: 1, SO4: 1, PO4: 1, GOL: 1, EDO: 1, NA: 1, CL: 1, ZN: 1, MG: 1 };
+
+  var STANDARD_RESIDUE = {};
+  ("ALA ARG ASN ASP CYS GLN GLU GLY HIS ILE LEU LYS MET PHE PRO SER THR TRP TYR VAL " +
+   "HID HIE HIP CYX ASH GLH LYN MSE SEC PYL").split(" ").forEach(function (name) {
+    STANDARD_RESIDUE[name] = 1;
+  });
+
+  function compId(hierarchy, element, residueIndex) {
+    if (hierarchy.atoms && hierarchy.atoms.auth_comp_id) {
+      return hierarchy.atoms.auth_comp_id.value(element);
+    }
+    if (hierarchy.residues && hierarchy.residues.auth_comp_id) {
+      return hierarchy.residues.auth_comp_id.value(residueIndex);
+    }
+    return "";
+  }
+
   function hasWebGL() {
     try {
       var canvas = document.createElement("canvas");
@@ -158,12 +180,64 @@
         self.entries[name] = entry;
         if (!self.primary || options.primary) self.primary = entry;
         var colour = options.color !== undefined ? options.color : COLOURS[name];
-        if (colour !== undefined) {
-          return self.plugin.managers.structure.component.updateRepresentationsTheme(
-            entry.components, { color: "uniform", colorParams: { value: colour } });
-        }
+        return self.theme(entry, colour, options.ligandColor);
       });
     }).then(function () { return self; });
+  };
+
+
+  /* Protein in the state's colour, ligand in its own.
+
+     Applied per component: colouring every component uniformly makes the
+     ligand the same cyan as the 300 residues around it, which is the one thing
+     in the scene the page is about. */
+  Scope.prototype.theme = function (entry, colour, ligandColour) {
+    var manager = this.plugin.managers.structure.component;
+    var polymer = [], ligand = [];
+    (entry.components || []).forEach(function (component) {
+      var key = component.key || "";
+      (key.indexOf("ligand") >= 0 ? ligand : polymer).push(component);
+    });
+    var work = [];
+    if (polymer.length && colour !== undefined) {
+      work.push(manager.updateRepresentationsTheme(
+        polymer, { color: "uniform", colorParams: { value: colour } }));
+    }
+    if (ligand.length) {
+      work.push(manager.updateRepresentationsTheme(
+        ligand, { color: "uniform",
+                  colorParams: { value: ligandColour === undefined ? LIGAND : ligandColour } }));
+    }
+    return Promise.all(work);
+  };
+
+  /* Sit on the ligand, which is what every one of these panes is about.
+
+     Component identity is read defensively: whether comp ids live on the atom
+     table or the residue table depends on how the file was parsed, and reading
+     the wrong one throws inside a promise where the only visible symptom is the
+     HUD showing "Cannot read properties of undefined". */
+  Scope.prototype.focusLigand = function (name) {
+    var data = this.data(name);
+    if (!data) return false;
+    var elements = [];
+    data.units.forEach(function (unit) {
+      var hierarchy = unit.model.atomicHierarchy;
+      if (!hierarchy || !hierarchy.residueAtomSegments) return;
+      var indices = [];
+      for (var i = 0; i < unit.elements.length; i++) {
+        var element = unit.elements[i];
+        var residueIndex = hierarchy.residueAtomSegments.index[element];
+        var comp = compId(hierarchy, element, residueIndex);
+        if (!comp || STANDARD_RESIDUE[comp] || NON_LIGAND[comp]) continue;
+        indices.push(i);
+      }
+      if (indices.length) elements.push({ unit: unit, indices: new Int32Array(indices) });
+    });
+    if (!elements.length) return false;
+    this.plugin.managers.camera.focusLoci(
+      { kind: "element-loci", structure: data, elements: elements });
+    return true;
   };
 
   Scope.prototype.remove = function (name) {
@@ -274,6 +348,21 @@
     if (!host) return Promise.reject(new Error("no viewer element"));
     if (!hasWebGL()) return Promise.reject(new Error("this browser has no WebGL"));
     return molstar.Viewer.create(host, OPTIONS).then(function (viewer) {
+      // Mol* paints its own light background over the scope's grid. Transparent
+      // lets the panel show through, which is what makes these read as
+      // instruments rather than as embedded viewers.
+      // Mol*'s default clear colour is a cream (#fcfbf3) that reads as a hole
+      // in the panel. transparentBackground is set false deliberately: with it
+      // true the canvas has no alpha to be transparent into and clears to
+      // white, which looks like the prop was ignored. An opaque clear at the
+      // scope's own colour is what actually works.
+      try {
+        viewer.plugin.canvas3d.setProps({
+          transparentBackground: false,
+          renderer: { backgroundColor: 0x111826 },
+          camera: { helper: { axes: { name: "off", params: {} } } },
+        });
+      } catch (err) { /* an older build without these props still renders */ }
       return new Scope(viewer, host);
     });
   }

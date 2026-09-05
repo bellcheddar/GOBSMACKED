@@ -195,8 +195,11 @@
           <li><span><i class="led {{ led(p.alphac, r.alphac if r else none) }}"></i>alphaC helix</span><span>{{ p.alphac or '&mdash;'|safe }}</span></li>
           <li><span><i class="led {{ 'off' if not p.hinge_hbonds else '' }}"></i>Hinge H-bonds</span><span>{{ p.hinge_hbonds }}</span></li>
           <li><span><i class="led {{ 'off' if not p.gatekeeper_contact else '' }}"></i>Gatekeeper contact</span><span>{{ p.gatekeeper_residue or '&mdash;'|safe }}</span></li>
-          {% for name in ['back pocket I', 'back pocket II', 'front pocket', 'adenine'] %}
-          <li><span><i class="led {{ led(p.occupancy.get(name), r.occupancy.get(name) if r else none) }}"></i>{{ name|capitalize }}</span>
+          {# Labels are spelled out rather than filtered: |capitalize lowercases
+             the rest of the string and turns "back pocket II" into "Back pocket ii". #}
+          {% for name, label in [('back pocket I', 'Back pocket I'), ('back pocket II', 'Back pocket II'),
+                                 ('front pocket', 'Front pocket'), ('adenine', 'Adenine pocket')] %}
+          <li><span><i class="led {{ led(p.occupancy.get(name), r.occupancy.get(name) if r else none) }}"></i>{{ label }}</span>
               <span>{{ 'occupied' if p.occupancy.get(name) else 'empty' }}</span></li>
           {% endfor %}
           <li><span><i class="led {{ 'amber' if (p.solvent_exposed_fraction or 0) > 0.3 else '' }}"></i>Solvent exposed</span>

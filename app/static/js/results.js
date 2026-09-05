@@ -24,6 +24,7 @@
       return scope.load("md_final", fileUrl("complex_md_final.pdb"),
                         { primary: true, color: GobViewer.COLOURS.md_final });
     }).then(function () {
+      complexScope.focusLigand("md_final");
       if (card.geometry && card.geometry.md_final) {
         var g = card.geometry.md_final;
         document.getElementById("complex-hud").textContent =
@@ -46,6 +47,7 @@
           return complexScope.load(state, fileUrl(files[state]),
                                    { primary: true, color: GobViewer.COLOURS[state] || GobViewer.COLOURS.md_final });
         }).then(function () {
+          complexScope.focusLigand(state);
           document.getElementById("complex-hud").textContent = state.replace("_", " ");
         });
       });

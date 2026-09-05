@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly GOBSMACKED prune
+
+[Timer]
+OnCalendar=daily
+# The droplet runs several apps' timers; a spread stops them all waking at once.
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
