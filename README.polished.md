@@ -2,7 +2,7 @@
 
 > **Fold, dock, relax and annotate a protein-ligand complex, then check it against the experimental structure.**
 
-[![live](https://img.shields.io/badge/live-gobsmacked.mdeller.com-00d084?logo=icloud&logoColor=white)](https://gobsmacked.mdeller.com) ![python](https://img.shields.io/badge/python-3.11.16-3776AB?logo=python&logoColor=white) ![flask](https://img.shields.io/badge/flask-3.1.3-000000?logo=flask&logoColor=white) ![gunicorn](https://img.shields.io/badge/gunicorn-26.2.0-499848?logo=gunicorn&logoColor=white) ![nginx](https://img.shields.io/badge/nginx-1.24-009639?logo=nginx&logoColor=white) ![sqlite](https://img.shields.io/badge/sqlite-3-003B57?logo=sqlite&logoColor=white) ![rdkit](https://img.shields.io/badge/rdkit-2026.3.6-3838AB) ![biotite](https://img.shields.io/badge/biotite-1.6.0-467FF7) ![gemmi](https://img.shields.io/badge/gemmi-0.7.5-467FF7) ![mdtraj](https://img.shields.io/badge/mdtraj-1.11.1-467FF7) ![plip](https://img.shields.io/badge/PLIP-3.0.1-9b51e0) ![pandamap](https://img.shields.io/badge/PandaMap-4.3.0-9b51e0) ![pandadock](https://img.shields.io/badge/PandaDock-4.1.1-9b51e0) ![openmm](https://img.shields.io/badge/OpenMM-8.2-00897B) ![esmfold](https://img.shields.io/badge/ESMFold-v1-00897B) ![tmtools](https://img.shields.io/badge/TM--align-0.3.0-00897B) ![molstar](https://img.shields.io/badge/Mol*-5.11.0-467FF7) ![plotly](https://img.shields.io/badge/Plotly.js-2.35.2-3F4F75?logo=plotly&logoColor=white) ![tests](https://img.shields.io/badge/pytest-67%20passing-00d084) ![data](https://img.shields.io/badge/data-RCSB%20%C2%B7%20UniProt%20%C2%B7%20AlphaFold%20DB%20%C2%B7%20KLIFS%20%C2%B7%20GPCRdb%20%C2%B7%20InterPro-467FF7) ![licence](https://img.shields.io/badge/licence-MIT-lightgrey) ![author](https://img.shields.io/badge/author-Marc%20C.%20Deller%2C%20D.Phil.-1C244B)
+[![live](https://img.shields.io/badge/live-gobsmacked.mdeller.com-00d084?logo=icloud&logoColor=white)](https://gobsmacked.mdeller.com) ![python](https://img.shields.io/badge/python-3.11.16-3776AB?logo=python&logoColor=white) ![flask](https://img.shields.io/badge/flask-3.1.3-000000?logo=flask&logoColor=white) ![gunicorn](https://img.shields.io/badge/gunicorn-26.2.0-499848?logo=gunicorn&logoColor=white) ![nginx](https://img.shields.io/badge/nginx-1.24-009639?logo=nginx&logoColor=white) ![sqlite](https://img.shields.io/badge/sqlite-3-003B57?logo=sqlite&logoColor=white) ![rdkit](https://img.shields.io/badge/rdkit-2026.3.6-3838AB) ![biotite](https://img.shields.io/badge/biotite-1.6.0-467FF7) ![gemmi](https://img.shields.io/badge/gemmi-0.7.5-467FF7) ![mdtraj](https://img.shields.io/badge/mdtraj-1.11.1-467FF7) ![plip](https://img.shields.io/badge/PLIP-3.0.1-9b51e0) ![pandamap](https://img.shields.io/badge/PandaMap-4.3.0-9b51e0) ![pandadock](https://img.shields.io/badge/PandaDock-4.1.1-9b51e0) ![openmm](https://img.shields.io/badge/OpenMM-8.2-00897B) ![esmfold](https://img.shields.io/badge/ESMFold-v1-00897B) ![tmtools](https://img.shields.io/badge/TM--align-0.3.0-00897B) ![molstar](https://img.shields.io/badge/Mol*-5.11.0-467FF7) ![plotly](https://img.shields.io/badge/Plotly.js-2.35.2-3F4F75?logo=plotly&logoColor=white) ![tests](https://img.shields.io/badge/pytest-79%20passing-00d084) ![data](https://img.shields.io/badge/data-RCSB%20%C2%B7%20UniProt%20%C2%B7%20AlphaFold%20DB%20%C2%B7%20KLIFS%20%C2%B7%20GPCRdb%20%C2%B7%20InterPro-467FF7) ![licence](https://img.shields.io/badge/licence-MIT-lightgrey) ![author](https://img.shields.io/badge/author-Marc%20C.%20Deller%2C%20D.Phil.-1C244B)
 
 <table>
 <tr>
@@ -199,14 +199,55 @@ bundle_template/         copied verbatim into every run bundle
 design/                  the visual contract this app is built from
 deploy/                  systemd units, nginx site, provision and deploy scripts
 scripts/                 prune, DOI checker, THIRD_PARTY generator
-tests/                   67 tests, plus two fixture archives built from crystals
+tests/                   79 tests, plus two fixture archives built from crystals
 software.yaml            the single source of truth for attribution
 ```
+
+## 🔬 A worked example
+
+One real run, end to end, on an M1 Max: EGFR plus erlotinib, prepared on the live site,
+judged against 1M17.
+
+![The results page for the real EGFR run: a grade D dial at 53.5, ligand RMSD 7.83 A graded F with the note that this usually means the wrong site rather than a scoring failure, MD drift 0.25 A graded A, the relaxed complex in Mol* with its PLIP interactions, and the kinase switch list reporting no hinge contact against the crystal's Type I](docs/screenshots/real-run.png)
+
+| Stage | Wall clock | What happened |
+|---|---|---|
+| fetch | seconds | AlphaFold model `AF-P00533-F1`, mean pLDDT 75.9 |
+| annotate | seconds | Pfam `PF07714` 714-966, KLIFS gatekeeper Thr790 |
+| prepare | seconds | 1M17's site renumbered onto the model (+24), box sized on erlotinib at 32 x 21 x 23 A |
+| prep | 3 s | trimmed 1,210 residues to the 253-residue kinase domain, all 51 pocket residues kept |
+| dock | 937 s | PandaDock empirical search, 10 poses, best score −15.5 kcal/mol |
+| md | 3,224 s | 58,266 atoms, OpenCL single precision, ~20 ns/day, 100 ps equilibration plus 500 ps production |
+| summarise | 106 s | 100 frames |
+| analyse | 28 s | on the droplet |
+
+**GOBSMACK 53.5, grade D.** The interesting part is what that decomposes into:
+
+| Metric | Value | Grade |
+|---|---|---|
+| Ligand RMSD | 7.83 Å | F |
+| PLIP overlap | 0.33 | D |
+| Pocket Cα RMSD | 1.66 Å | C |
+| χ1 agreement | 0.69 | C |
+| Drift, last window | 0.25 Å | A |
+| MD rescue | −0.75 Å | F |
+
+The pose is stable and physically valid: it does not move over 500 ps, it has no clash, its
+stereocentres are intact and it sits inside the box. It is also 8 Å from where erlotinib
+actually binds, it never touches the hinge, and the mode classifier calls it allosteric
+against the crystal's Type I. A docking score of −15.5 kcal/mol says nothing about any of
+that, which is the entire argument for scoring a prediction against the structure rather
+than against itself.
+
+Two caveats stated rather than buried: this run used the empirical scorer alone, because the
+SE(3) GNN rescoring needs PyTorch and this machine had 12 GB of disk left, and 500 ps is a
+short production run. Both are reasons to expect a worse pose, and neither changes what the
+scorecard is reporting.
 
 ## 🧫 Testing
 
 ```bash
-make test                # 67 tests, about 50 seconds
+make test                # 79 tests, about a minute
 make check-refs          # every DOI in software.yaml, checked against Crossref
 make third-party         # regenerate THIRD_PARTY.md from software.yaml
 python tests/fixtures/build_fixtures.py    # rebuild the two fixture archives
@@ -243,7 +284,7 @@ Roadmap for GOBSMACKED, in dependency order. Suggestions welcome.
 - [x] **Runs and ownership.** Public and private runs, an owner key stored only as a hash, unguessable job IDs, and private runs absent from listings rather than redacted in them
 - [x] **The About page.** A hand-drawn pipeline schematic, the grade thresholds, and a software table generated from the same file as THIRD_PARTY.md with every DOI checked against Crossref
 - [x] **Deploy to gobsmacked.mdeller.com.** Provisioned, certificated and serving over HTTP/2, with the nightly prune timer armed. The static location deliberately sets no `access_log`: nginx.conf gives the droplet the `vhost` format that appends the requested host, and naming `combined` in the location would silently zero this app's visit count on the mdeller.com launcher
-- [ ] **Run the real loop once, end to end.** The fixtures are built from crystals, which tests every code path but not PandaDock or OpenMM themselves, and the live server has now analysed one of them in 15 seconds. One genuine EGFR run on a GPU box, uploaded and scored, is the acceptance test that remains
+- [x] **Run the real loop once, end to end.** EGFR plus erlotinib, prepared on the live site, run on an M1 Max, uploaded and scored: see the worked example below. It found nine bugs the crystal-built fixtures could not, six of which failed silently
 - [x] **PLIP interactions drawn in Mol\*, and the pocket as sticks.** Mol*'s viewer build exports no shape builder, so each interaction is loaded as a tiny structure of two-atom fragments joined by CONECT records: a run of them along PLIP's own endpoints reads as a dashed line, one file and one colour per interaction type. The lines are therefore the interactions the table lists rather than a second opinion computed by the viewer, which would quietly disagree with it
 - [x] **An apo reference in the overlay.** Optional on Panel 4, fetched and stripped of its ligands at analysis time, and drawn in purple as a fourth toggle: the shape the pocket has with nothing bound, which is the shape a predicted model tends to resemble
 - [ ] **STEVEDORE: multi-ligand SAR series.** Score a congeneric series against one reference and correlate with ChEMBL affinity, which turns a single verification into a protocol assessment

@@ -241,7 +241,8 @@
       <h2>Interactions</h2>
       <div class="scroll" style="max-height:460px;overflow-y:auto">
         <table>
-          <thead><tr><th>Residue</th><th>MD final</th><th>Crystal</th></tr></thead>
+          <thead><tr><th>Residue{% if card.reference.pdb_id %}, {{ card.reference.pdb_id }} numbering{% endif %}</th>
+            <th>MD final</th><th>Crystal</th></tr></thead>
           <tbody>
           {% for row_i in card.interaction_table %}
           <tr>
@@ -253,7 +254,9 @@
           </tbody>
         </table>
       </div>
-      <p class="note">Jaccard overlap with the crystal: pose 1
+      <p class="note">Residues are numbered as the crystal numbers them, because that is the only
+        numbering both structures share. The PandaMap panel above uses the complex's own.<br>
+        Jaccard overlap with the crystal: pose 1
         {{ card.jaccard.pose1 if card.jaccard.pose1 is not none else 'n/a' }}, MD final
         {{ card.jaccard.md_final if card.jaccard.md_final is not none else 'n/a' }}.</p>
     </section>
