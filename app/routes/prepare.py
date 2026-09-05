@@ -384,7 +384,10 @@ def api_bundle():
     bundle_url = url_for("runs.download_bundle", job_id=job_id, _external=True)
     if visibility == "private":
         bundle_url += f"?token={owner_token}"
-    command = (f'curl -L "{bundle_url}" | tar xz && cd run_bundle_{job_id} '
+    # -f so an HTTP error stops the chain with curl's own message. Without it
+    # curl happily pipes the error page into tar, and the user is told
+    # "not in gzip format" about a 403.
+    command = (f'curl -fL "{bundle_url}" | tar xz && cd run_bundle_{job_id} '
                f'&& pixi run gobsmacked')
 
     md_cfg = campaign["md"]

@@ -232,7 +232,8 @@ def test_the_run_command_is_one_line_and_self_contained(client, app):
     body = response.get_json()
     command = body["command"]
     assert command.count("&&") == 2, "should be fetch, cd, run and nothing else"
-    assert command.startswith("curl -L "), "the download is part of the command"
+    assert command.startswith("curl -fL "), \
+        "-f, or an HTTP error is piped into tar and reported as a gzip problem"
     assert "| tar xz" in command
     assert f"cd run_bundle_{body['job_id']}" in command
     assert command.endswith("pixi run gobsmacked")
@@ -243,8 +244,7 @@ def test_the_run_command_is_one_line_and_self_contained(client, app):
 
 
 def test_a_private_bundle_command_carries_its_token(client):
-    """A private bundle is guarded, so the command has to authenticate or the
-    curl fetches a 403 and the user sees tar complain about an empty archive."""
+    """A private bundle is guarded, so the command has to authenticate."""
     response = client.post("/api/bundle", json={
         "visibility": "private",
         "protein": {"sequence": "MRPSGTAGAALLALL", "chain": "A"},
