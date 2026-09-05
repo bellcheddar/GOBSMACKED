@@ -235,8 +235,12 @@
       if (indices.length) elements.push({ unit: unit, indices: new Int32Array(indices) });
     });
     if (!elements.length) return false;
+    // extraRadius pulls back far enough to show the pocket the ligand is in.
+    // Framing the ligand alone fills the pane with a drug and clips away the
+    // thing it is bound to, which is the half the reader is judging.
     this.plugin.managers.camera.focusLoci(
-      { kind: "element-loci", structure: data, elements: elements });
+      { kind: "element-loci", structure: data, elements: elements },
+      { extraRadius: 8, minRadius: 12, durationMs: 0 });
     return true;
   };
 

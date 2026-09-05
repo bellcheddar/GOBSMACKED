@@ -9,6 +9,11 @@
 
   function fileUrl(name) { return "/runs/" + jobId + "/file/" + name; }
 
+  /* Run `action` after Mol* has finished its own post-load camera work. */
+  function settle(action) {
+    requestAnimationFrame(function () { window.setTimeout(action, 400); });
+  }
+
   function ownerToken() {
     try {
       var keys = JSON.parse(localStorage.getItem("gobsmacked_keys") || "{}");
@@ -24,7 +29,10 @@
       return scope.load("md_final", fileUrl("complex_md_final.pdb"),
                         { primary: true, color: GobViewer.COLOURS.md_final });
     }).then(function () {
-      complexScope.focusLigand("md_final");
+      // Mol*'s own preset resets the camera to the whole structure after the
+      // load promise resolves, so focusing immediately is silently undone.
+      // One frame plus a beat lands after it.
+      settle(function () { complexScope.focusLigand("md_final"); });
       if (card.geometry && card.geometry.md_final) {
         var g = card.geometry.md_final;
         document.getElementById("complex-hud").textContent =
@@ -47,7 +55,7 @@
           return complexScope.load(state, fileUrl(files[state]),
                                    { primary: true, color: GobViewer.COLOURS[state] || GobViewer.COLOURS.md_final });
         }).then(function () {
-          complexScope.focusLigand(state);
+          settle(function () { complexScope.focusLigand(state); });
           document.getElementById("complex-hud").textContent = state.replace("_", " ");
         });
       });
@@ -76,9 +84,11 @@
       // The reference is drawn in the crystal's own frame, so the overlay is
       // only meaningful because the bundle's structures were written in it too.
       if (g.pocket_residues_reference && overlayScope) {
-        overlayScope.focus(g.pocket_residues_reference.map(function (n) {
-          return { chain: g.reference_chain, seqId: n };
-        }));
+        settle(function () {
+          overlayScope.focus(g.pocket_residues_reference.map(function (n) {
+            return { chain: g.reference_chain, seqId: n };
+          }));
+        });
       }
     }).catch(function (err) {
       document.getElementById("overlay-hud").textContent = err.message;

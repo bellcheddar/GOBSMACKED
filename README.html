@@ -1,0 +1,381 @@
+<h1>🔬 GOBSMACKED</h1>
+<blockquote>
+<p><strong>Fold, dock, relax and annotate a protein-ligand complex, then check it against the experimental structure.</strong></p>
+</blockquote>
+<p><img alt="status" src="https://img.shields.io/badge/status-built%2C%20awaiting%20DNS-fcb900"> <img alt="python" src="https://img.shields.io/badge/python-3.11.16-3776AB?logo=python&amp;logoColor=white"> <img alt="flask" src="https://img.shields.io/badge/flask-3.1.3-000000?logo=flask&amp;logoColor=white"> <img alt="gunicorn" src="https://img.shields.io/badge/gunicorn-26.2.0-499848?logo=gunicorn&amp;logoColor=white"> <img alt="nginx" src="https://img.shields.io/badge/nginx-1.24-009639?logo=nginx&amp;logoColor=white"> <img alt="sqlite" src="https://img.shields.io/badge/sqlite-3-003B57?logo=sqlite&amp;logoColor=white"> <img alt="rdkit" src="https://img.shields.io/badge/rdkit-2026.3.6-3838AB"> <img alt="biotite" src="https://img.shields.io/badge/biotite-1.6.0-467FF7"> <img alt="gemmi" src="https://img.shields.io/badge/gemmi-0.7.5-467FF7"> <img alt="mdtraj" src="https://img.shields.io/badge/mdtraj-1.11.1-467FF7"> <img alt="plip" src="https://img.shields.io/badge/PLIP-3.0.1-9b51e0"> <img alt="pandamap" src="https://img.shields.io/badge/PandaMap-4.3.0-9b51e0"> <img alt="pandadock" src="https://img.shields.io/badge/PandaDock-4.1.1-9b51e0"> <img alt="openmm" src="https://img.shields.io/badge/OpenMM-8.2-00897B"> <img alt="esmfold" src="https://img.shields.io/badge/ESMFold-v1-00897B"> <img alt="tmtools" src="https://img.shields.io/badge/TM--align-0.3.0-00897B"> <img alt="molstar" src="https://img.shields.io/badge/Mol*-5.11.0-467FF7"> <img alt="plotly" src="https://img.shields.io/badge/Plotly.js-2.35.2-3F4F75?logo=plotly&amp;logoColor=white"> <img alt="tests" src="https://img.shields.io/badge/pytest-64%20passing-00d084"> <img alt="data" src="https://img.shields.io/badge/data-RCSB%20%C2%B7%20UniProt%20%C2%B7%20AlphaFold%20DB%20%C2%B7%20KLIFS%20%C2%B7%20GPCRdb%20%C2%B7%20InterPro-467FF7"> <img alt="licence" src="https://img.shields.io/badge/licence-MIT-lightgrey"> <img alt="author" src="https://img.shields.io/badge/author-Marc%20C.%20Deller%2C%20D.Phil.-1C244B"></p>
+<table class="emd-info-table">
+<tr>
+<td>🌐 <b>Website</b></td><td><a href="https://marcdeller.com" target="_blank" rel="noopener noreferrer">marcdeller.com</a></td>
+<td>✉️ <b>Contact</b></td><td><a href="mailto:marc@marcdeller.com">marc@marcdeller.com</a></td>
+<td>🐙 <b>GitHub</b></td><td><a href="https://github.com/bellcheddar/GOBSMACKED" target="_blank" rel="noopener noreferrer">bellcheddar/GOBSMACKED</a></td>
+</tr>
+</table>
+
+<hr>
+<p><img alt="The scorecard for EGFR plus erlotinib judged against crystal structure 1M17: a grade B dial at 83.5, six graded gauges each with a sentence explaining what to do about it, the relaxed complex in Mol*, PandaMap's 2D interaction diagram, and the kinase switch list reporting DFG-in, alphaC-out and a Type I binding mode matching the crystal" src="docs/screenshots/scorecard.png"></p>
+<p><strong>GOBSMACKED</strong> (Ground-truth Overlay for Binding Sites, Modes And Complex Kinetics/Dynamics) takes a protein and a ligand, folds and docks and relaxes them, and then does the thing most docking pipelines skip: it goes and finds the crystal structure, superposes on the binding pocket, and tells you how close you got and why.</p>
+<p><strong>Why it matters:</strong> a docking score is a ranking, not a measurement, and a pretty predicted complex looks exactly the same whether it is right or wrong. GOBSMACKED answers three separate questions about one prediction: how close the pose lands to the crystal (PIER REVIEW), whether molecular dynamics recovers the induced fit that an apo-like predicted pocket is missing (HOLOGRAM), and whether the binding mode the prediction implies is the binding mode the crystal shows (GATEKEEPER). It is useful for: anyone validating a docking protocol before trusting it on a target with no structure, anyone asking whether ESMFold plus docking is good enough for a particular pocket, and anyone who wants the answer as a graded scorecard rather than as a folder of PDB files.</p>
+<hr>
+<h2>🧭 How it works</h2>
+<p>The heavy compute does not run on the server. ESMFold, the PandaDock GNN and OpenMM need a GPU and several gigabytes; the host is a shared CPU droplet with 3.8 GB. So the work is split in two, with an archive passing between them.</p>
+<p><img alt="The pipeline: Prepare on the droplet fetches, annotates, picks the pocket and the reference, and emits run_bundle.tar.gz; Run on your GPU folds, preps, docks, runs MD and summarises into results.tar.gz; Analyze on the droplet superposes, runs the interaction analysis, grades, classifies the binding mode and draws the dynamics" src="docs/screenshots/pipeline.png"></p>
+<div class="emd-table-wrap"><table class="emd-data-table">
+<thead>
+<tr>
+<th>Stage</th>
+<th>Where</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Stage"><strong>Prepare</strong></td>
+<td data-label="Where">droplet, CPU</td>
+<td data-label="What happens">Resolve the input, fetch the best available structure, annotate the family, pick the pocket, choose a reference crystal, emit <code>run_bundle.tar.gz</code></td>
+</tr>
+<tr>
+<td data-label="Stage"><strong>Run</strong></td>
+<td data-label="Where">your machine, GPU</td>
+<td data-label="What happens"><code>pixi run gobsmacked</code>: fold (if needed), prep, dock, minimise and run MD, summarise, emit <code>results.tar.gz</code></td>
+</tr>
+<tr>
+<td data-label="Stage"><strong>Analyze</strong></td>
+<td data-label="Where">droplet, CPU</td>
+<td data-label="What happens">Validate the archive, superpose on the pocket, run PLIP and PandaMap, grade, classify the binding mode, draw the trajectory</td>
+</tr>
+</tbody>
+</table></div>
+<p>Nothing in the bundle contacts the server. The campaign file goes in, the results archive comes back, and both are validated against a schema so a failed stage never turns into a puzzling analysis.</p>
+<h2>🚀 Quick start</h2>
+<p>Open the site, paste a UniProt accession and a SMILES, pick a pocket, and download the bundle. Then, on a machine with a GPU:</p>
+<pre><code class="language-bash">tar xzf run_bundle_gs_20260905_xxxxxxxxxxxx.tar.gz
+cd run_bundle_gs_20260905_xxxxxxxxxxxx
+pixi install
+pixi run gobsmacked          # writes results/results.tar.gz
+</code></pre>
+<p>Upload <code>results/results.tar.gz</code> on the Analyze tab. The whole analysis takes seconds and lands on one page.</p>
+<p>To run the web application locally:</p>
+<pre><code class="language-bash">git clone https://github.com/bellcheddar/GOBSMACKED.git
+cd GOBSMACKED
+uv venv --python 3.11 .venv
+uv pip install --python .venv/bin/python -r requirements.txt
+make serve                   # http://127.0.0.1:8009
+</code></pre>
+<h2>🔧 Prepare</h2>
+<p>Four panels, each unlocking the next.</p>
+<div class="emd-table-wrap"><table class="emd-data-table">
+<thead>
+<tr>
+<th>Panel</th>
+<th>Accepts</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Panel"><strong>1. Protein</strong></td>
+<td data-label="Accepts">UniProt accession, PDB ID, raw sequence, or a dropped <code>.pdb</code> / <code>.cif</code></td>
+<td data-label="What it does">Resolves the canonical sequence and picks a starting structure by a fixed, reported priority: your upload &gt; a named PDB entry &gt; AlphaFold DB &gt; ESM Atlas &gt; fold it in the bundle</td>
+</tr>
+<tr>
+<td data-label="Panel"><strong>2. Annotation</strong></td>
+<td data-label="Accepts">(automatic)</td>
+<td data-label="What it does">InterPro supplies Pfam domains, which route the target: <code>PF00069</code>/<code>PF07714</code> to KLIFS, <code>PF00001</code>/<code>PF00002</code>/<code>PF00003</code>/<code>PF10324</code> to GPCRdb, anything else to UniProt features alone</td>
+</tr>
+<tr>
+<td data-label="Panel"><strong>3. Ligand and pocket</strong></td>
+<td data-label="Accepts">SMILES, plus residues clicked in Mol* or on the sequence track</td>
+<td data-label="What it does">RDKit validates and draws the ligand; the docking box is the selection's extent plus 8 Å, floored at 18 Å per side</td>
+</tr>
+<tr>
+<td data-label="Panel"><strong>4. Reference</strong></td>
+<td data-label="Accepts">(automatic, or a typed PDB ID)</td>
+<td data-label="What it does">RCSB entries mapped to the accession, ranked by Morgan Tanimoto against your ligand, with resolution and a 2D depiction</td>
+</tr>
+</tbody>
+</table></div>
+<p><img alt="The Prepare tab: the four input panels on the left and right, an empty Mol* scope in the centre waiting for a structure, and the seven-cell stage strip across the top showing what the bundle will run" src="docs/screenshots/prepare.png"></p>
+<p><strong>Reference selection prefers the same ligand over a sharper crystal.</strong> EGFR and erlotinib make the case: 1M17 holds erlotinib itself at 2.6 Å, while the best sub-2.5 Å entry holds gefitinib at Tanimoto 0.41. Judging an erlotinib pose against a gefitinib crystal because the crystal is 0.9 Å sharper would measure the wrong thing.</p>
+<p><strong>Visibility</strong> is chosen here and defaults to public. A private run is issued a 32-character owner key, shown once, stored only as its sha256, and carried inside the bundle so uploading results needs no typing. Private runs are <strong>absent</strong> from the Runs table without the key rather than greyed out: a greyed row would leak that the run exists, and how many there are.</p>
+<h2>⚗️ Run</h2>
+<p>Five stages, each idempotent and resumable from a <code>.done</code> marker.</p>
+<div class="emd-table-wrap"><table class="emd-data-table">
+<thead>
+<tr>
+<th>Stage</th>
+<th>Tool</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Stage"><code>fold</code></td>
+<td data-label="Tool">ESMFold</td>
+<td data-label="Notes">Skipped when the bundle carries a model, which is the usual case. Chunk size scales with sequence length; pocket residues below pLDDT 70 raise a warning that reaches the scorecard</td>
+</tr>
+<tr>
+<td data-label="Stage"><code>prep</code></td>
+<td data-label="Tool">PDBFixer, RDKit</td>
+<td data-label="Notes">Missing atoms, hydrogens at the campaign pH, waters and heteroatoms removed. Terminal missing residues are deliberately not built: they are absent from the construct, not from the model</td>
+</tr>
+<tr>
+<td data-label="Stage"><code>dock</code></td>
+<td data-label="Tool">PandaDock</td>
+<td data-label="Notes"><code>hybrid</code> (search plus SE(3) GNN rescoring), <code>flex</code> (induced fit) or <code>dock</code> (empirical only). Falls back from <code>hybrid</code> to <code>dock</code> when the GNN checkpoint cannot be fetched, and says so</td>
+</tr>
+<tr>
+<td data-label="Stage"><code>md</code></td>
+<td data-label="Tool">OpenMM, OpenFF</td>
+<td data-label="Notes">Amber14 plus OpenFF Sage, TIP3P with 0.15 M NaCl and 10 Å padding, restraints released over the equilibration, 2 fs with hydrogen mass repartitioning. The DCD holds the solute only</td>
+</tr>
+<tr>
+<td data-label="Stage"><code>summarise</code></td>
+<td data-label="Tool">MDTraj</td>
+<td data-label="Notes">Per-frame ligand and backbone RMSD, per-residue RMSF, pocket volume by voxel counting, a residue-by-frame contact matrix, then packs the archive</td>
+</tr>
+</tbody>
+</table></div>
+<pre><code class="language-bash">pixi run gobsmacked --list          # what would run, and what is already done
+pixi run gobsmacked --stage dock    # rerun from dock onward
+</code></pre>
+<p>Target on one consumer GPU: under 30 minutes for a 300-residue domain with the default 1 ns production. The runner prints a wall-clock estimate before it starts.</p>
+<h2>📊 Analyze</h2>
+<p>Upload the archive and the whole pipeline runs inside the request: ingest, superpose, interactions, modes, dynamics, scorecard. Seconds, not minutes.</p>
+<p><strong>Superposition is on pocket Cα atoms, never on the whole chain.</strong> A model can be excellent at the binding site and 6 Å out at a disordered terminus; superposing whole chains spreads that error into the pocket and inflates the ligand RMSD, which is the one number this app exists to report honestly. The whole-chain TM-score is reported alongside, as context.</p>
+<p><strong>Residue numbering is never assumed to match.</strong> The reference chain and the model are aligned by sequence first and every measurement walks that mapping. 1M17 numbers EGFR from the mature protein, 24 lower than UniProt: comparing raw numbers would make every contact look lost and the interaction overlap read as zero.</p>
+<h3>🎯 The scorecard</h3>
+<div class="emd-table-wrap"><table class="emd-data-table">
+<thead>
+<tr>
+<th>Metric</th>
+<th>A</th>
+<th>B</th>
+<th>C</th>
+<th>D</th>
+<th>F</th>
+<th>Weight</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Metric">Ligand RMSD, best of pose 1 and MD-final</td>
+<td data-label="A">≤ 1.0 Å</td>
+<td data-label="B">≤ 2.0</td>
+<td data-label="C">≤ 3.0</td>
+<td data-label="D">≤ 4.0</td>
+<td data-label="F">&gt; 4.0</td>
+<td data-label="Weight">30</td>
+</tr>
+<tr>
+<td data-label="Metric">PLIP interaction Jaccard, best of pose 1 and MD-final</td>
+<td data-label="A">≥ 0.75</td>
+<td data-label="B">≥ 0.55</td>
+<td data-label="C">≥ 0.40</td>
+<td data-label="D">≥ 0.25</td>
+<td data-label="F">&lt; 0.25</td>
+<td data-label="Weight">20</td>
+</tr>
+<tr>
+<td data-label="Metric">Pocket Cα RMSD, MD-final</td>
+<td data-label="A">≤ 0.8</td>
+<td data-label="B">≤ 1.2</td>
+<td data-label="C">≤ 1.8</td>
+<td data-label="D">≤ 2.5</td>
+<td data-label="F">&gt; 2.5</td>
+<td data-label="Weight">15</td>
+</tr>
+<tr>
+<td data-label="Metric">χ1 agreement, MD-final (within 40°)</td>
+<td data-label="A">≥ 0.85</td>
+<td data-label="B">≥ 0.70</td>
+<td data-label="C">≥ 0.55</td>
+<td data-label="D">≥ 0.40</td>
+<td data-label="F">&lt; 0.40</td>
+<td data-label="Weight">10</td>
+</tr>
+<tr>
+<td data-label="Metric">MD stability: ligand drift, last window minus first</td>
+<td data-label="A">≤ 0.5 Å</td>
+<td data-label="B">≤ 1.0</td>
+<td data-label="C">≤ 1.5</td>
+<td data-label="D">≤ 2.5</td>
+<td data-label="F">&gt; 2.5</td>
+<td data-label="Weight">10</td>
+</tr>
+<tr>
+<td data-label="Metric">Rescue: pocket Cα RMSD before MD minus after</td>
+<td data-label="A">≥ +0.5 Å</td>
+<td data-label="B">≥ +0.2</td>
+<td data-label="C">≥ 0</td>
+<td data-label="D">≥ −0.3</td>
+<td data-label="F">&lt; −0.3</td>
+<td data-label="Weight">10</td>
+</tr>
+<tr>
+<td data-label="Metric">Pose validity: clashes, bond lengths, chirality, inside the box</td>
+<td data-label="A">pass</td>
+<td data-label="B"></td>
+<td data-label="C"></td>
+<td data-label="D"></td>
+<td data-label="F">fail</td>
+<td data-label="Weight">5</td>
+</tr>
+</tbody>
+</table></div>
+<p>The composite <strong>GOBSMACK score</strong> is the weighted mean of those grades. Three rules keep it honest:</p>
+<ul>
+<li><strong>A metric that could not be measured drops out</strong> and the remaining weights are renormalised, which the card states rather than hiding in the arithmetic.</li>
+<li><strong>A validity failure caps the composite at 40.</strong> A pose with a 1.8 Å clash is not a B whatever else it scored.</li>
+<li><strong>A run with no reference gets no composite at all.</strong> There is nothing to verify it against, and scoring it on the two metrics that survive would be a grade for something nobody checked.</li>
+</ul>
+<p>Every gauge carries one plain sentence saying what the number means and what to do about it, because "χ1 agreement 0.42" is not actionable and "most pocket side chains are in the wrong rotamer, which is what an apo-like predicted pocket looks like: try flex docking plus a longer equilibration" is.</p>
+<h3>🧬 The overlay</h3>
+<p>Model in grey, MD-final in phosphor, the crystal in amber, all superposed on the pocket, with the ten most displaced side chains and their χ1 angles listed underneath.</p>
+<p><img alt="The three-way overlay for the beta-2 adrenergic receptor: the relaxed complex in cyan and crystal structure 2RH1 in amber, superposed on 53 pocket Ca atoms at TM 0.999, with carazolol drawn in pink, above a table of the most displaced pocket side chains with their chi1 angles in the model and in the crystal" src="docs/screenshots/overlay.png"></p>
+<h3>🔑 The binding mode</h3>
+<p>Two families get a real answer and everything else gets an honest one.</p>
+<p><strong>Kinases</strong> are labelled from the KLIFS 85-residue pocket, mapped onto the target sequence region by region. DFG-in / out / inter follows the Modi and Dunbrack distance criteria; αC-in / out follows the β3-Lys to αC-Glu salt bridge; the Type I / I½ / II / allosteric label follows which subpockets the ligand occupies.</p>
+<p><strong>GPCRs</strong> are labelled from GPCRdb generic numbering: orthosteric, vestibule, intracellular or lipid-facing from the contacts, and active-like or inactive-like from the TM3-TM6 distance, with the NPxxY RMSD, the toggle switch χ1, the PIF motif and the sodium site reported alongside.</p>
+<p>Both classifiers run on the prediction and on the crystal with the same code, so a difference in the label is a difference in the structure and not a difference in method.</p>
+<h3>🧪 Thresholds that were measured, not quoted</h3>
+<p>Two numbers in this repository were placed by measuring structures with this code rather than by taking a value from a paper that used a different atom pair:</p>
+<ul>
+<li><strong>The TM3-TM6 activation cut is 13 Å</strong>, from six structures: inactive rhodopsin 1GZM 8.7, A2A 3EML 9.7, β2AR 2RH1 11.2; active metarhodopsin 3PQR 14.7, A2A 5G53 18.5, β2AR 3SN6 19.0. (Quoted "ionic lock" distances of 3 to 4 Å are guanidinium-to-carboxylate, not Cα-to-Cα, and are not comparable.)</li>
+<li><strong>A subpocket counts as occupied at two contacts, not one.</strong> Erlotinib in 1M17 grazes exactly one αC residue at 4 Å, and a one-contact rule labels a textbook Type I inhibitor as Type I½.</li>
+</ul>
+<h2>🧱 Stack</h2>
+<div class="emd-table-wrap"><table class="emd-data-table">
+<thead>
+<tr>
+<th>Component</th>
+<th>Role</th>
+<th>Licence</th>
+<th>Where it runs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td data-label="Component">Flask, gunicorn, nginx, SQLite</td>
+<td data-label="Role">Web application and store</td>
+<td data-label="Licence">BSD / MIT / public domain</td>
+<td data-label="Where it runs">droplet</td>
+</tr>
+<tr>
+<td data-label="Component">biotite, tmtools, gemmi, NumPy, SciPy</td>
+<td data-label="Role">Alignment, superposition, TM-score</td>
+<td data-label="Licence">BSD / MIT / MPL</td>
+<td data-label="Where it runs">droplet</td>
+</tr>
+<tr>
+<td data-label="Component">RDKit</td>
+<td data-label="Role">SMILES, depiction, fingerprints, symmetry-aware RMSD</td>
+<td data-label="Licence">BSD-3</td>
+<td data-label="Where it runs">droplet and bundle</td>
+</tr>
+<tr>
+<td data-label="Component">PLIP</td>
+<td data-label="Role">Interaction fingerprints</td>
+<td data-label="Licence">GPL-2.0</td>
+<td data-label="Where it runs">droplet only, as a subprocess</td>
+</tr>
+<tr>
+<td data-label="Component">PandaMap</td>
+<td data-label="Role">2D interaction maps, empirical ΔG</td>
+<td data-label="Licence">MIT</td>
+<td data-label="Where it runs">droplet</td>
+</tr>
+<tr>
+<td data-label="Component">PandaDock</td>
+<td data-label="Role">Docking (hybrid search plus SE(3) GNN rescoring)</td>
+<td data-label="Licence">MIT</td>
+<td data-label="Where it runs">bundle</td>
+</tr>
+<tr>
+<td data-label="Component">ESMFold, OpenFold</td>
+<td data-label="Role">Folding when no model exists</td>
+<td data-label="Licence">MIT / Apache-2.0</td>
+<td data-label="Where it runs">bundle</td>
+</tr>
+<tr>
+<td data-label="Component">OpenMM, PDBFixer, openmmforcefields</td>
+<td data-label="Role">Preparation, minimisation, MD</td>
+<td data-label="Licence">MIT / LGPL</td>
+<td data-label="Where it runs">bundle</td>
+</tr>
+<tr>
+<td data-label="Component">MDTraj</td>
+<td data-label="Role">Trajectory analysis</td>
+<td data-label="Licence">LGPL-2.1</td>
+<td data-label="Where it runs">bundle and droplet</td>
+</tr>
+<tr>
+<td data-label="Component">Mol*, Plotly.js</td>
+<td data-label="Role">3D views and traces</td>
+<td data-label="Licence">MIT</td>
+<td data-label="Where it runs">browser</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>PLIP is GPL-2.0 and is run as a subprocess, never imported.</strong> What crosses the boundary is an XML file, so no GPL code is linked into this MIT-licensed application, and PLIP is deliberately absent from the run bundle. Full attribution, with every DOI checked against Crossref, is in <a href="THIRD_PARTY.md">THIRD_PARTY.md</a> and on the app's About page: both are generated from <code>software.yaml</code>, so they cannot drift.</p>
+<h2>📁 Repository layout</h2>
+<pre><code class="language-text">app/                     the Flask application (droplet only, no torch)
+  routes/                prepare, analyze, runs, about
+  services/              fetch, annotate, references, bundle, ingest,
+                         superpose, interactions, scorecard, modes, dynamics
+  templates/  static/    Jinja2, the instrument-panel CSS, Mol* and Plotly
+bundle_template/         copied verbatim into every run bundle
+  run.py                 the five-stage runner with resume markers
+  gobsmacked_run/        fold, prep, dock, md, summarise, schema
+design/                  the visual contract this app is built from
+deploy/                  systemd units, nginx site, provision and deploy scripts
+scripts/                 prune, DOI checker, THIRD_PARTY generator
+tests/                   64 tests, plus two fixture archives built from crystals
+software.yaml            the single source of truth for attribution
+</code></pre>
+<h2>🧫 Testing</h2>
+<pre><code class="language-bash">make test                # 64 tests, about 40 seconds
+make check-refs          # every DOI in software.yaml, checked against Crossref
+make third-party         # regenerate THIRD_PARTY.md from software.yaml
+python tests/fixtures/build_fixtures.py    # rebuild the two fixture archives
+</code></pre>
+<p>The fixtures are built from real crystals rather than from noise: 4HJO judged against 1M17, and 5D5A against 2RH1, with the ligand displaced to make a plausible docked pose and the bundle's own <code>summarise</code> stage computing the trajectory summary. So they exercise the last stage of the bundle as well as the first stage of the server.</p>
+<p>End to end, EGFR plus erlotinib scores 83.5 (B) against 1M17 and labels Type I, DFG-in on both sides; β2AR plus carazolol scores 94.0 (A) against 2RH1 and labels orthosteric, inactive-like on both.</p>
+<h2>🌐 Deployment</h2>
+<pre><code class="language-bash">cp .env.example .env         # DROPLET_SSH, SERVER_NAME, BIND_ADDR
+bash deploy/deploy.sh        # rsync, reinstall dependencies, restart, verify the live page
+</code></pre>
+<p>First time only, on the droplet as root:</p>
+<pre><code class="language-bash">sudo SERVER_NAME=gobsmacked.mdeller.com bash /opt/gobsmacked/deploy/provision.sh
+</code></pre>
+<p>That installs the service user, the virtual environment, the systemd unit, the nightly prune timer, the nginx site and a Let's Encrypt certificate. The prune drops the results archive of public runs older than 90 days while keeping the scorecard, the report and the final structures, so the Runs row stays useful. Private runs are never pruned.</p>
+<h2>✅ To Do</h2>
+<p>Roadmap for GOBSMACKED, in dependency order. Suggestions welcome.</p>
+<ul class="emd-tasklist">
+<li><span class="emd-check">&#9989;</span> <strong>Prepare, without references.</strong> Input resolution across UniProt, RCSB, AlphaFold DB, ESM Atlas and uploads, with the priority reported rather than silently applied. Pfam routing, KLIFS and GPCRdb clients behind a 30-day cache, the Mol* pocket picker and the SVG sequence track</li>
+<li><span class="emd-check">&#9989;</span> <strong>Map the KLIFS pocket onto an arbitrary sequence.</strong> The 85-character pocket string carries no residue numbers and only its regions are contiguous, so it is placed region by region, longest run first, with a bounded difflib pass for regions the alignment shifted. 83 of 85 positions map for EGFR, putting the gatekeeper on Thr790, the hinge on Met793 and DFG on Asp855</li>
+<li><span class="emd-check">&#9989;</span> <strong>The run bundle.</strong> Five resumable stages in a self-contained pixi environment, with the GNN fallback, the platform choice and the solute-only trajectory</li>
+<li><span class="emd-check">&#9989;</span> <strong>Analyze, with verification.</strong> Pocket-Cα superposition, symmetry-corrected ligand RMSD, χ1 agreement, PLIP fingerprints compared in reference numbering, PandaMap, the scorecard and the dynamics panels</li>
+<li><span class="emd-check">&#9989;</span> <strong>Both binding-mode classifiers, on day one.</strong> Kinase and GPCR, each validated against structures whose labels are known: 1M17 Type I DFG-in, 1IEP Type II DFG-out, 2RH1 orthosteric inactive-like, 3SN6 active-like</li>
+<li><span class="emd-check">&#9989;</span> <strong>Runs and ownership.</strong> Public and private runs, an owner key stored only as a hash, unguessable job IDs, and private runs absent from listings rather than redacted in them</li>
+<li><span class="emd-check">&#9989;</span> <strong>The About page.</strong> A hand-drawn pipeline schematic, the grade thresholds, and a software table generated from the same file as THIRD_PARTY.md with every DOI checked against Crossref</li>
+<li><span class="emd-check">&#11036;</span> <strong>Deploy to gobsmacked.mdeller.com.</strong> Waiting on a DNS A record; the nginx site, systemd units and provisioning script are written and the droplet has the headroom</li>
+<li><span class="emd-check">&#11036;</span> <strong>Run the real loop once, end to end.</strong> The fixtures are built from crystals, which tests every code path but not PandaDock or OpenMM themselves. One genuine EGFR run on a GPU box, uploaded and scored, is the acceptance test that remains</li>
+<li><span class="emd-check">&#11036;</span> <strong>PLIP interactions drawn in Mol*.</strong> The interaction table and the 2D map both exist; dashed lines coloured by type in the 3D complex view do not yet</li>
+<li><span class="emd-check">&#11036;</span> <strong>An apo reference in the overlay.</strong> The campaign already carries <code>apo_pdb_id</code> and the viewer already has a fourth colour for it</li>
+<li><span class="emd-check">&#11036;</span> <strong>STEVEDORE: multi-ligand SAR series.</strong> Score a congeneric series against one reference and correlate with ChEMBL affinity, which turns a single verification into a protocol assessment</li>
+<li><span class="emd-check">&#11036;</span> <strong>DOCKYARD: ingest poses from other engines.</strong> Boltz-2, Vina and DiffDock all produce poses this scorecard could grade, and the comparison is more interesting than any single engine's self-report</li>
+<li><span class="emd-check">&#11036;</span> <strong>Cryptic pocket detection.</strong> The pocket volume trace already shows a pocket opening and closing during MD; naming that as a finding rather than a plot is the next step</li>
+</ul>
+<hr>
+<h2>👤 Author</h2>
+<p><strong>Marc C. Deller, D.Phil.</strong><br>
+Structural biologist &amp; drug discovery scientist  </p>
+<table class="emd-info-table">
+<tr>
+<td>🌐</td><td><a href="https://marcdeller.com" target="_blank" rel="noopener noreferrer">marcdeller.com</a></td>
+<td>✉️</td><td><a href="mailto:marc@marcdeller.com">marc@marcdeller.com</a></td>
+<td>🐙</td><td><a href="https://github.com/bellcheddar/GOBSMACKED" target="_blank" rel="noopener noreferrer">github.com/bellcheddar/GOBSMACKED</a></td>
+</tr>
+</table>
+
+<p>Released under the MIT licence. The app name is a joke; the numbers are not.</p>
