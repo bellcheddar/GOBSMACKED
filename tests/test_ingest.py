@@ -93,3 +93,16 @@ def test_extra_files_are_ignored(egfr_archive, tmp_path):
     results = ingest.extract(tmp_path / "extra.tar.gz", tmp_path / "out")
     assert (results.root / "notes.txt").exists()
     assert results.summary["frames"] == 20
+
+
+def test_a_repacked_archive_says_so(egfr_archive, tmp_path):
+    """The manifest and the campaign both carry a job id. Disagreement means the
+    archive was rebuilt after the run, which the results page should say."""
+    with tarfile.open(egfr_archive) as tar:
+        manifest = json.loads(tar.extractfile("results/manifest.json").read())
+    manifest["job_id"] = "gs_20260905_somethingelse"
+    repacked = repack(egfr_archive, tmp_path / "repacked.tar.gz",
+                      replace={"manifest.json": json.dumps(manifest).encode()})
+    results = ingest.extract(repacked, tmp_path / "out")
+    assert results.job_id == "gs_20260905_somethingelse"
+    assert any("repacked" in w for w in results.warnings)

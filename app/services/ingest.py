@@ -133,6 +133,17 @@ def extract(archive: Path, dest: Path) -> Results:
             "Download a fresh bundle and re-run it."
         )
 
+    manifest_job = res.manifest.get("job_id")
+    campaign_job = res.campaign.get("job_id")
+    if manifest_job and campaign_job and manifest_job != campaign_job:
+        # The manifest wins (it is what `job_id` returns), but a disagreement
+        # means the archive was repacked after the run, and the settings shown
+        # on the results page may not be the settings that produced it.
+        res.warnings.append(
+            f"The manifest names job {manifest_job} and the campaign inside it names "
+            f"{campaign_job}. This archive has been repacked since it was written."
+        )
+
     res.missing_optional = [o for o in OPTIONAL if not (dest / o).exists()]
     if "traj/traj.dcd" in res.missing_optional:
         res.warnings.append("No trajectory file: the dynamics panels will show the summary only.")
