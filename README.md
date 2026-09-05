@@ -2,11 +2,11 @@
 
 > **Fold, dock, relax and annotate a protein-ligand complex, then check it against the experimental structure.**
 
-![status](https://img.shields.io/badge/status-built%2C%20awaiting%20DNS-fcb900) ![python](https://img.shields.io/badge/python-3.11.16-3776AB?logo=python&logoColor=white) ![flask](https://img.shields.io/badge/flask-3.1.3-000000?logo=flask&logoColor=white) ![gunicorn](https://img.shields.io/badge/gunicorn-26.2.0-499848?logo=gunicorn&logoColor=white) ![nginx](https://img.shields.io/badge/nginx-1.24-009639?logo=nginx&logoColor=white) ![sqlite](https://img.shields.io/badge/sqlite-3-003B57?logo=sqlite&logoColor=white) ![rdkit](https://img.shields.io/badge/rdkit-2026.3.6-3838AB) ![biotite](https://img.shields.io/badge/biotite-1.6.0-467FF7) ![gemmi](https://img.shields.io/badge/gemmi-0.7.5-467FF7) ![mdtraj](https://img.shields.io/badge/mdtraj-1.11.1-467FF7) ![plip](https://img.shields.io/badge/PLIP-3.0.1-9b51e0) ![pandamap](https://img.shields.io/badge/PandaMap-4.3.0-9b51e0) ![pandadock](https://img.shields.io/badge/PandaDock-4.1.1-9b51e0) ![openmm](https://img.shields.io/badge/OpenMM-8.2-00897B) ![esmfold](https://img.shields.io/badge/ESMFold-v1-00897B) ![tmtools](https://img.shields.io/badge/TM--align-0.3.0-00897B) ![molstar](https://img.shields.io/badge/Mol*-5.11.0-467FF7) ![plotly](https://img.shields.io/badge/Plotly.js-2.35.2-3F4F75?logo=plotly&logoColor=white) ![tests](https://img.shields.io/badge/pytest-64%20passing-00d084) ![data](https://img.shields.io/badge/data-RCSB%20%C2%B7%20UniProt%20%C2%B7%20AlphaFold%20DB%20%C2%B7%20KLIFS%20%C2%B7%20GPCRdb%20%C2%B7%20InterPro-467FF7) ![licence](https://img.shields.io/badge/licence-MIT-lightgrey) ![author](https://img.shields.io/badge/author-Marc%20C.%20Deller%2C%20D.Phil.-1C244B)
+[![live](https://img.shields.io/badge/live-gobsmacked.mdeller.com-00d084?logo=icloud&logoColor=white)](https://gobsmacked.mdeller.com) ![python](https://img.shields.io/badge/python-3.11.16-3776AB?logo=python&logoColor=white) ![flask](https://img.shields.io/badge/flask-3.1.3-000000?logo=flask&logoColor=white) ![gunicorn](https://img.shields.io/badge/gunicorn-26.2.0-499848?logo=gunicorn&logoColor=white) ![nginx](https://img.shields.io/badge/nginx-1.24-009639?logo=nginx&logoColor=white) ![sqlite](https://img.shields.io/badge/sqlite-3-003B57?logo=sqlite&logoColor=white) ![rdkit](https://img.shields.io/badge/rdkit-2026.3.6-3838AB) ![biotite](https://img.shields.io/badge/biotite-1.6.0-467FF7) ![gemmi](https://img.shields.io/badge/gemmi-0.7.5-467FF7) ![mdtraj](https://img.shields.io/badge/mdtraj-1.11.1-467FF7) ![plip](https://img.shields.io/badge/PLIP-3.0.1-9b51e0) ![pandamap](https://img.shields.io/badge/PandaMap-4.3.0-9b51e0) ![pandadock](https://img.shields.io/badge/PandaDock-4.1.1-9b51e0) ![openmm](https://img.shields.io/badge/OpenMM-8.2-00897B) ![esmfold](https://img.shields.io/badge/ESMFold-v1-00897B) ![tmtools](https://img.shields.io/badge/TM--align-0.3.0-00897B) ![molstar](https://img.shields.io/badge/Mol*-5.11.0-467FF7) ![plotly](https://img.shields.io/badge/Plotly.js-2.35.2-3F4F75?logo=plotly&logoColor=white) ![tests](https://img.shields.io/badge/pytest-64%20passing-00d084) ![data](https://img.shields.io/badge/data-RCSB%20%C2%B7%20UniProt%20%C2%B7%20AlphaFold%20DB%20%C2%B7%20KLIFS%20%C2%B7%20GPCRdb%20%C2%B7%20InterPro-467FF7) ![licence](https://img.shields.io/badge/licence-MIT-lightgrey) ![author](https://img.shields.io/badge/author-Marc%20C.%20Deller%2C%20D.Phil.-1C244B)
 
 <table>
 <tr>
-<td>🌐 <b>Website</b></td><td><a href="https://marcdeller.com" target="_blank" rel="noopener noreferrer">marcdeller.com</a></td>
+<td>🌐 <b>App</b></td><td><a href="https://gobsmacked.mdeller.com" target="_blank" rel="noopener noreferrer">gobsmacked.mdeller.com</a></td>
 <td>✉️ <b>Contact</b></td><td><a href="mailto:marc@marcdeller.com">marc@marcdeller.com</a></td>
 <td>🐙 <b>GitHub</b></td><td><a href="https://github.com/bellcheddar/GOBSMACKED" target="_blank" rel="noopener noreferrer">bellcheddar/GOBSMACKED</a></td>
 </tr>
@@ -38,7 +38,7 @@ Nothing in the bundle contacts the server. The campaign file goes in, the result
 
 ## 🚀 Quick start
 
-Open the site, paste a UniProt accession and a SMILES, pick a pocket, and download the bundle. Then, on a machine with a GPU:
+Open [gobsmacked.mdeller.com](https://gobsmacked.mdeller.com), paste a UniProt accession and a SMILES, pick a pocket, and download the bundle. Then, on a machine with a GPU:
 
 ```bash
 tar xzf run_bundle_gs_20260905_xxxxxxxxxxxx.tar.gz
@@ -220,7 +220,7 @@ Roadmap for GOBSMACKED, in dependency order. Suggestions welcome.
 - [x] **Both binding-mode classifiers, on day one.** Kinase and GPCR, each validated against structures whose labels are known: 1M17 Type I DFG-in, 1IEP Type II DFG-out, 2RH1 orthosteric inactive-like, 3SN6 active-like
 - [x] **Runs and ownership.** Public and private runs, an owner key stored only as a hash, unguessable job IDs, and private runs absent from listings rather than redacted in them
 - [x] **The About page.** A hand-drawn pipeline schematic, the grade thresholds, and a software table generated from the same file as THIRD_PARTY.md with every DOI checked against Crossref
-- [ ] **Deploy to gobsmacked.mdeller.com.** Waiting on a DNS A record; the nginx site, systemd units and provisioning script are written and the droplet has the headroom
+- [x] **Deploy to gobsmacked.mdeller.com.** Provisioned, certificated and serving over HTTP/2, with the nightly prune timer armed. The static location deliberately sets no `access_log`: nginx.conf gives the droplet the `vhost` format that appends the requested host, and naming `combined` in the location would silently zero this app's visit count on the mdeller.com launcher
 - [ ] **Run the real loop once, end to end.** The fixtures are built from crystals, which tests every code path but not PandaDock or OpenMM themselves. One genuine EGFR run on a GPU box, uploaded and scored, is the acceptance test that remains
 - [ ] **PLIP interactions drawn in Mol\*.** The interaction table and the 2D map both exist; dashed lines coloured by type in the 3D complex view do not yet
 - [ ] **An apo reference in the overlay.** The campaign already carries `apo_pdb_id` and the viewer already has a fourth colour for it
