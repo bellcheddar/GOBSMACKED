@@ -33,6 +33,28 @@ CHI1_THIRD = {
 CHI1_TOLERANCE_DEG = 40.0
 
 
+# Residue names that are never the docked ligand. Deliberately an explicit list
+# rather than gemmi's own classification, because gemmi reports UNK as an amino
+# acid (it is "unknown amino acid" in the chemical component dictionary) and UNK
+# is exactly what OpenMM names a ligand merged in from an OpenFF topology.
+# MDTraj makes the same call for the same reason, so both halves of this app hit
+# it, and both now use this list.
+STANDARD_RESIDUES = set(
+    "ALA ARG ASN ASP CYS GLN GLU GLY HIS ILE LEU LYS MET PHE PRO SER THR TRP TYR VAL "
+    "HID HIE HIP HISE HISD CYX ASH GLH LYN MSE SEC PYL ACE NME NMA "
+    "HOH DOD WAT SOL NA CL K MG ZN CA MN FE CU SOD CLA POT".split()
+)
+
+
+def is_ligand_residue(res: gemmi.Residue) -> bool:
+    """Could this residue be the docked ligand?
+
+    A crystal's UNK stubs are a handful of backbone atoms, so callers take the
+    largest candidate and are not fooled by them.
+    """
+    return res.name.upper() not in STANDARD_RESIDUES and not res.is_water()
+
+
 def is_amino_acid(res: gemmi.Residue) -> bool:
     """Is this residue a standard amino acid?
 
@@ -125,7 +147,7 @@ def ligand_atoms(path: str | Path, ccd: Optional[str] = None,
         if chain_name and ch.name != chain_name:
             continue
         for res in ch:
-            if is_amino_acid(res) or res.is_water():
+            if not is_ligand_residue(res):
                 continue
             if ccd and res.name.upper() != ccd.upper():
                 continue
@@ -388,7 +410,7 @@ def _ligand_mol(path: str | Path, ccd: Optional[str], smiles: str):
     keep = None
     for ch in st[0]:
         for res in ch:
-            if is_amino_acid(res) or res.is_water():
+            if not is_ligand_residue(res):
                 continue
             if ccd and res.name.upper() != ccd.upper():
                 continue

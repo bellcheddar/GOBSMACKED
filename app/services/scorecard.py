@@ -243,11 +243,12 @@ def check_validity(complex_path, ligand_smiles: str = "", box_centre=None, box=N
     st = gemmi.read_structure(str(complex_path))
     st.setup_entities()
     st.remove_waters()
+    from .superpose import is_ligand_residue
+
     prot = []
     for ch in st[0]:
         for res in ch:
-            info = gemmi.find_tabulated_residue(res.name)
-            if not (info and info.is_amino_acid()):
+            if is_ligand_residue(res) or res.is_water():
                 continue
             for a in res:
                 if a.element != gemmi.Element("H"):

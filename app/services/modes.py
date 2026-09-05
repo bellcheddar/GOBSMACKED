@@ -189,7 +189,7 @@ def solvent_exposed_fraction(chain: Chain, lig_xyz: np.ndarray, cutoff: float = 
 
 def classify_kinase(structure_path: str | Path, sequence: str, pocket_map: dict[str, int],
                     chain_name: Optional[str] = None, ligand_ccd: Optional[str] = None,
-                    hinge_hbonds: Optional[int] = None) -> dict[str, Any]:
+                    plip_rows: Optional[list[dict]] = None) -> dict[str, Any]:
     """DFG state, alphaC state, subpocket occupancy and a type label."""
     chain = load_chain(structure_path, chain_name)
     if chain is None:
@@ -230,8 +230,20 @@ def classify_kinase(structure_path: str | Path, sequence: str, pocket_map: dict[
         occupancy[subpocket] = len(hits) >= threshold
         contacts_by_region[subpocket] = hits
 
-    if hinge_hbonds is None:
-        hinge_hbonds = _hinge_hbonds(chain, [at(p) for p in range(46, 49)], lig)
+    # Hinge hydrogen bonds, not hydrogen bonds. PLIP's count for the whole
+    # complex was being reported under a hinge label, which for a pose that
+    # never touches the hinge read as three hinge H-bonds on a ligand making
+    # none. PLIP's angle-aware detection is still preferred where it is
+    # available: it is simply restricted to the hinge residues here.
+    hinge_numbers = [at(p) for p in range(46, 49)]
+    hinge_set = {n for n in hinge_numbers if n is not None}
+    if plip_rows is not None:
+        hinge_hbonds = sum(1 for row in plip_rows
+                           if row.get("type") == "hbond" and row.get("resnr") in hinge_set)
+        hinge_source = "PLIP, hinge residues only"
+    else:
+        hinge_hbonds = _hinge_hbonds(chain, hinge_numbers, lig)
+        hinge_source = "geometry, heavy-atom N/O within 3.5 A"
 
     exposed = solvent_exposed_fraction(chain, lig_xyz)
     label, reason = _kinase_type(occupancy, dfg, bool(lig))
@@ -248,6 +260,8 @@ def classify_kinase(structure_path: str | Path, sequence: str, pocket_map: dict[
         "occupancy": occupancy,
         "contacts": contacts_by_region,
         "hinge_hbonds": hinge_hbonds,
+        "hinge_hbond_source": hinge_source,
+        "hinge_residues": sorted(hinge_set),
         "gatekeeper_residue": _residue_label(chain, gatekeeper),
         "gatekeeper_contact": bool(contacts_by_region.get("gatekeeper")),
         "solvent_exposed_fraction": exposed,

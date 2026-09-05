@@ -269,14 +269,13 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
 
     # --- dynamics --------------------------------------------------------
     dynamics = dyn_svc.summarise(results.summary)
-    if reference_pdb and final.get("transform") and results.path("traj/traj.dcd"):
-        import numpy as np
+    if reference_pdb and final.get("numbering_map") and results.path("traj/traj.dcd"):
         trace = dyn_svc.ligand_rmsd_to_reference(
             results.root / "traj" / "topology.pdb", results.root / "traj" / "traj.dcd",
-            reference_pdb, np.array(final["transform"]["rotation"]),
-            np.array(final["transform"]["translation"]),
-            reference_ccd=reference.get("ligand_ccd"), ligand_resname=ligand_resname,
-            smiles=ligand.get("smiles", ""))
+            reference_pdb, final["numbering_map"], final.get("pocket_residues_reference") or [],
+            reference_chain=reference.get("chain") or None,
+            reference_ccd=reference.get("ligand_ccd"),
+            ligand_resname=ligand_names.get("md_final"), smiles=ligand.get("smiles", ""))
         dynamics["ligand_rmsd_reference"] = trace
     card["dynamics"] = dynamics
 
@@ -308,10 +307,8 @@ def classify_modes(family: str, protein: dict, sequence: str, md_final, referenc
     """Run the family's classifier on the prediction and on the crystal."""
     out: dict[str, Any] = {"family": family, "predicted": None, "reference": None}
     accession = protein.get("uniprot")
-    hinge_hbonds = None
     md_plip = plip.get("md_final") or {}
-    if md_plip.get("counts"):
-        hinge_hbonds = md_plip["counts"].get("hbond")
+    plip_rows = md_plip.get("interactions") if md_plip.get("interactions") else None
 
     if family == "kinase" and accession:
         klifs = annotate_svc.klifs_annotation(accession, sequence,
@@ -321,7 +318,7 @@ def classify_modes(family: str, protein: dict, sequence: str, md_final, referenc
             if md_final:
                 out["predicted"] = modes_svc.classify_kinase(
                     md_final, sequence, pocket_map, ligand_ccd=ligand_resname,
-                    hinge_hbonds=hinge_hbonds)
+                    plip_rows=plip_rows)
             if reference_pdb:
                 out["reference"] = modes_svc.classify_kinase(
                     reference_pdb, sequence, pocket_map,
@@ -411,16 +408,15 @@ def _ligand_resname(complex_path) -> Optional[str]:
         return None
     import gemmi
 
+    from ..services.superpose import is_ligand_residue
+
     st = gemmi.read_structure(str(complex_path))
     st.setup_entities()
     st.remove_waters()
     best = None
     for ch in st[0]:
         for res in ch:
-            info = gemmi.find_tabulated_residue(res.name)
-            if info and info.is_amino_acid():
-                continue
-            if res.is_water():
+            if not is_ligand_residue(res):
                 continue
             if best is None or len(res) > best[1]:
                 best = (res.name, len(res))

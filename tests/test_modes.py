@@ -133,3 +133,25 @@ def test_no_reference_is_unverified_not_a_mismatch():
     verdict = modes.compare_modes({"family": "kinase", "label": "I"}, None)
     assert verdict["match"] is None
     assert "unverified" in verdict["verdict"].lower()
+
+
+@needs_network
+def test_hinge_hbonds_counts_the_hinge_not_the_complex(egfr):
+    """PLIP's H-bond count for the whole complex was being reported under a
+    hinge label, so a pose that never touches the hinge showed three hinge
+    hydrogen bonds."""
+    sequence, klifs = egfr
+    rows = [
+        {"type": "hbond", "resnr": 769},        # Met769: the hinge, in 1M17 numbering
+        {"type": "hbond", "resnr": 831},        # elsewhere in the pocket
+        {"type": "hydrophobic", "resnr": 769},  # not a hydrogen bond
+    ]
+    result = modes.classify_kinase(structure("1M17"), sequence, klifs["pocket_map"],
+                                   chain_name="A", ligand_ccd="AQ4", plip_rows=rows)
+    assert 769 in result["hinge_residues"]
+    assert result["hinge_hbonds"] == 1
+    assert result["hinge_hbond_source"].startswith("PLIP")
+
+    geometric = modes.classify_kinase(structure("1M17"), sequence, klifs["pocket_map"],
+                                      chain_name="A", ligand_ccd="AQ4")
+    assert geometric["hinge_hbond_source"].startswith("geometry")

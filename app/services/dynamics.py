@@ -111,61 +111,126 @@ def rescue(pocket_rmsd_model: Optional[float],
 
 
 def ligand_rmsd_to_reference(topology: str | Path, trajectory: str | Path,
-                             reference_path: str | Path, rot, trans,
+                             reference_path: str | Path, numbering_map: dict,
+                             pocket_reference: list[int],
+                             reference_chain: Optional[str] = None,
                              reference_ccd: Optional[str] = None,
-                             ligand_resname: str = "LIG",
+                             ligand_resname: Optional[str] = None,
                              smiles: str = "") -> dict[str, Any]:
     """Per-frame heavy-atom RMSD of the docked ligand to the crystal ligand.
 
-    Each frame is moved by the pocket superposition computed once on the final
-    frame, then compared to the reference ligand. Symmetry is handled the same
-    way as the single-structure measurement, by matching the two graphs once and
-    reusing the atom correspondence for every frame: re-running the graph match
-    per frame would cost more than the trajectory read and give the same answer.
+    Every frame is superposed on the pocket Ca atoms in that frame, rather than
+    moved by one transform computed from the final structure. Reusing a fixed
+    transform assumes the trajectory and the final PDB share an origin, and they
+    need not: a DCD written with periodic wrapping and a PDB written without it
+    differ by whole box translations, which showed up here as a ligand sitting
+    85 A from the crystal in every frame. Per-frame superposition is immune to
+    that and is the better measurement anyway, because it reports the ligand's
+    deviation inside the pocket rather than the pocket's own drift.
+
+    Symmetry is resolved once: the atom correspondences between the two ligand
+    graphs are enumerated on the first frame and the best is reused, because a
+    phenyl ring flipped 180 degrees is the same pose and re-matching per frame
+    would give the same answer for a hundred times the work.
     """
     import mdtraj as md
+    from rdkit import Chem
 
-    from .superpose import apply_transform, _ligand_mol
+    from .superpose import _ligand_mol, apply_transform, kabsch, load_chain
 
     topology, trajectory = Path(topology), Path(trajectory)
     if not trajectory.exists() or not topology.exists():
         return {"error": "No trajectory in the archive, so there is no per-frame trace."}
 
-    top = md.load_topology(str(topology))
-    n_atoms = top.n_atoms
-    try:
-        n_frames = int(md.load(str(trajectory), top=top).n_frames)
-    except Exception as exc:
-        return {"error": f"Could not read the trajectory: {exc}"}
-    if n_atoms * n_frames > BUDGET_ATOM_FRAMES:
-        return {"error": f"That trajectory is {n_atoms * n_frames:,} atom-frames, past this "
-                         f"server's {BUDGET_ATOM_FRAMES:,} budget. Re-pack it with a longer "
-                         f"frame interval."}
-
-    selection = top.select(f"resname {ligand_resname} and not element H")
-    if len(selection) == 0:
-        return {"error": f"No residue named {ligand_resname} in the trajectory topology."}
-
-    traj = md.load(str(trajectory), top=top, atom_indices=selection)
-    coords = traj.xyz * 10.0                      # MDTraj works in nm, this app in A
-
+    reference = load_chain(reference_path, reference_chain)
     ref_mol = _ligand_mol(reference_path, reference_ccd, smiles)
-    if ref_mol is None:
+    if reference is None or ref_mol is None:
         return {"error": "No reference ligand to measure against."}
     ref_xyz = np.array([list(ref_mol.GetConformer().GetAtomPosition(i))
                         for i in range(ref_mol.GetNumAtoms())])
-    if ref_xyz.shape[0] != coords.shape[1]:
-        # Different heavy-atom counts: compare centroids, and say so rather than
-        # silently reporting a number computed on a different definition.
-        series = [round(float(np.linalg.norm(
-            apply_transform(frame, rot, trans).mean(axis=0) - ref_xyz.mean(axis=0))), 3)
-            for frame in coords]
-        return {"series": series, "approximate": True,
-                "note": "Atom counts differ between the docked and crystal ligands, so this "
-                        "trace is the distance between their centroids."}
+
+    top = md.load_topology(str(topology))
+    n_frames = int(md.load(str(trajectory), top=top).n_frames)
+    if top.n_atoms * n_frames > BUDGET_ATOM_FRAMES:
+        return {"error": f"That trajectory is {top.n_atoms * n_frames:,} atom-frames, past this "
+                         f"server's {BUDGET_ATOM_FRAMES:,} budget. Re-pack it with a longer "
+                         f"frame interval."}
+
+    # Pocket Ca pairs: model residue number -> reference residue number.
+    inverse = {int(ref): int(model) for model, ref in (numbering_map or {}).items()}
+    pairs = []
+    for ref_num in pocket_reference or []:
+        model_num = inverse.get(int(ref_num))
+        if model_num is None:
+            continue
+        ref_ca = reference.ca(int(ref_num))
+        model_ca = [a.index for a in top.atoms
+                    if a.name == "CA" and a.residue.resSeq == model_num]
+        if ref_ca is not None and model_ca:
+            pairs.append((model_ca[0], ref_ca))
+    if len(pairs) < 4:
+        return {"error": f"Only {len(pairs)} pocket Ca atoms could be paired between the "
+                         f"trajectory and the reference: too few to superpose per frame."}
+    mobile_indices = np.array([p[0] for p in pairs], dtype=int)
+    target_xyz = np.array([p[1] for p in pairs])
+
+    ligand_indices = _trajectory_ligand(top, ligand_resname)
+    if len(ligand_indices) == 0:
+        return {"error": "No ligand found in the trajectory topology."}
+
+    traj = md.load(str(trajectory), top=top,
+                   atom_indices=np.concatenate([mobile_indices, ligand_indices]))
+    n_pocket = len(mobile_indices)
+    coords = traj.xyz * 10.0                       # MDTraj is in nm, this app in A
+
+    approximate = ref_xyz.shape[0] != len(ligand_indices)
+    matches: list[tuple[int, ...]] = []
+    if not approximate:
+        probe = _ligand_mol(topology, ligand_resname, smiles)
+        if probe is not None and probe.GetNumAtoms() == ref_mol.GetNumAtoms():
+            try:
+                matches = list(probe.GetSubstructMatches(ref_mol, uniquify=False,
+                                                         useChirality=False, maxMatches=200))
+            except Exception:
+                matches = []
+        if not matches:
+            matches = [tuple(range(len(ligand_indices)))]
 
     series = []
     for frame in coords:
-        moved = apply_transform(frame, rot, trans)
-        series.append(round(float(np.sqrt(((moved - ref_xyz) ** 2).sum(axis=1).mean())), 3))
-    return {"series": series, "approximate": False}
+        rot, trans = kabsch(frame[:n_pocket], target_xyz)
+        moved = apply_transform(frame[n_pocket:], rot, trans)
+        if approximate:
+            series.append(round(float(np.linalg.norm(moved.mean(axis=0) - ref_xyz.mean(axis=0))), 3))
+            continue
+        best = min(float(np.sqrt(((moved[list(m)] - ref_xyz) ** 2).sum(axis=1).mean()))
+                   for m in matches)
+        series.append(round(best, 3))
+
+    return {"series": series, "approximate": approximate,
+            "superposed": "pocket Ca, per frame",
+            "note": ("Atom counts differ between the docked and crystal ligands, so this trace is "
+                     "the distance between their centroids.") if approximate else ""}
+
+
+def _trajectory_ligand(top, resname: Optional[str]) -> "np.ndarray":
+    """Heavy atoms of the ligand in a trajectory topology.
+
+    Not `not protein`: MDTraj classifies UNK as a protein residue, and UNK is
+    what OpenMM names a ligand merged in from an OpenFF topology.
+    """
+    from .superpose import STANDARD_RESIDUES
+
+    if resname:
+        indices = [a.index for a in top.atoms
+                   if a.residue.name.upper() == resname.upper() and a.element.symbol != "H"]
+        if indices:
+            return np.array(indices, dtype=int)
+    best: list[int] = []
+    for residue in top.residues:
+        if residue.name.upper() in STANDARD_RESIDUES:
+            continue
+        heavy = [a.index for a in residue.atoms if a.element.symbol != "H"]
+        if len(heavy) > len(best):
+            best = heavy
+    return np.array(best, dtype=int)

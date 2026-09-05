@@ -138,3 +138,26 @@ def test_the_ligand_is_named_per_file(egfr_card):
     # Both states produced a fingerprint, which is what the per-file name buys.
     assert card["jaccard"]["pose1"] is not None
     assert card["jaccard"]["md_final"] is not None
+
+
+def test_unk_is_recognised_as_the_ligand(tmp_path):
+    """gemmi reports UNK as an amino acid, exactly as MDTraj reports it as
+    protein, and UNK is what OpenMM names a ligand merged in from an OpenFF
+    topology. On the first real run that cost the MD-final ligand RMSD, the
+    validity checks and the binding-mode label, all silently."""
+    import gemmi
+
+    from app.services.superpose import is_ligand_residue
+
+    def residue(name):
+        res = gemmi.Residue()
+        res.name = name
+        return res
+
+    assert gemmi.find_tabulated_residue("UNK").is_amino_acid(), "gemmi changed its mind about UNK"
+    assert is_ligand_residue(residue("UNK"))
+    assert is_ligand_residue(residue("LIG"))
+    assert is_ligand_residue(residue("AQ4"))
+    assert not is_ligand_residue(residue("ALA"))
+    assert not is_ligand_residue(residue("MSE"))
+    assert not is_ligand_residue(residue("HOH"))
