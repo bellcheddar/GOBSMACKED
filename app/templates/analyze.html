@@ -7,7 +7,12 @@
     <p>Drop the <code>results.tar.gz</code> the bundle wrote. The archive carries its own job ID
       and owner key, so nothing else needs typing.</p>
     <label for="archive">Results archive</label>
-    <input type="file" id="archive" accept=".tar.gz,.tgz">
+    {# accept=".tar.gz" greys the file out in the macOS picker: the OS matches on
+       the LAST extension, and .tar.gz is not one extension, it is .gz. Chrome
+       maps each entry to a UTI, so .gz (public.gzip-archive) is what actually
+       lets results.tar.gz be chosen. The server still checks the full name. #}
+    <input type="file" id="archive"
+           accept=".gz,.tgz,.tar,application/gzip,application/x-gzip,application/x-compressed-tar">
     <button class="primary" id="upload-btn" style="width:100%;margin-top:14px">Analyse</button>
     <div id="upload-result" style="margin-top:14px"></div>
     <h3>What happens next</h3>
