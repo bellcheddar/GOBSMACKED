@@ -28,6 +28,12 @@
 
 * { box-sizing: border-box; }
 
+/* Belt and braces. Nothing on these pages is meant to scroll the page
+   sideways: wide content (the sequence track, tables, the 2D map) scrolls
+   inside the panel that owns it. If any of it ever escapes, it must not drag
+   the whole layout off screen with it. */
+html { overflow-x: hidden; }
+
 body {
   margin: 0;
   background: var(--slate);
@@ -56,7 +62,7 @@ a:hover { text-decoration: underline; }
 
 /* --- Stage strip ------------------------------------------------------ */
 .stages {
-  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px;
   padding: 18px 24px 0; max-width: var(--deck-max); margin: 0 auto;
 }
 .stage {
@@ -76,11 +82,11 @@ a:hover { text-decoration: underline; }
 
 .deck {
   max-width: var(--deck-max); margin: 0 auto; padding: 18px 24px 60px;
-  display: grid; grid-template-columns: 320px 1fr 340px; gap: 18px;
+  display: grid; grid-template-columns: 320px minmax(0, 1fr) 340px; gap: 18px;
   align-items: start;
 }
-.deck.wide { grid-template-columns: 360px 1fr; }
-.deck.single { grid-template-columns: 1fr; }
+.deck.wide { grid-template-columns: 360px minmax(0, 1fr); }
+.deck.single { grid-template-columns: minmax(0, 1fr); }
 .col { display: flex; flex-direction: column; gap: 18px; }
 
 /* The results deck is one twelve-column grid rather than three independent
@@ -89,7 +95,8 @@ a:hover { text-decoration: underline; }
    was as tall as its own content and nothing lined up. Here every panel is a
    direct grid child, so panels sharing a row share a height and the deck has no
    holes in it. */
-.deck.results { grid-template-columns: repeat(12, 1fr); align-items: stretch; }
+.deck.results,
+.deck.flow { grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: stretch; }
 .span-4  { grid-column: span 4; }
 /* The 2D map is a 1,700 px square. Left to its natural size it sets the height
    of its whole row and leaves its neighbours half empty, which is what the
@@ -108,7 +115,9 @@ a:hover { text-decoration: underline; }
   display: flex; flex-direction: column;
   min-width: 0;
 }
-.card > .scroll, .card > table { min-width: 0; }
+/* Same reason, one level down: a flex column's items also refuse to shrink
+   below their content unless told to. */
+.card > * { min-width: 0; }
 .card h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 14px; }
 .card h3 { font-size: 13px; font-weight: 600; color: var(--text); margin: 18px 0 8px; }
 .card p { margin: 0 0 10px; }
@@ -323,7 +332,7 @@ pre.cmd {
 .warnings li { margin-bottom: 4px; }
 
 /* --- Sequence track --------------------------------------------------- */
-.track { width: 100%; overflow-x: auto; }
+.track { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; }
 .track svg { display: block; }
 .track .cell { fill: var(--panel-2); }
 .track .cell.selected { fill: var(--phos); }
@@ -355,13 +364,13 @@ pre.cmd {
 
 /* --- Narrow ----------------------------------------------------------- */
 @media (max-width: 1250px) {
-  .deck, .deck.wide { grid-template-columns: 1fr; }
-  .deck.results { grid-template-columns: 1fr; }
+  .deck, .deck.wide { grid-template-columns: minmax(0, 1fr); }
+  .deck.results, .deck.flow { grid-template-columns: minmax(0, 1fr); }
   .span-4, .span-6, .span-8, .span-12 { grid-column: 1 / -1; }
-  .stages { grid-template-columns: repeat(4, 1fr); }
+  .stages { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
-  .stages { grid-template-columns: repeat(2, 1fr); }
+  .stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .brand { flex-wrap: wrap; gap: 6px; }
 }
 

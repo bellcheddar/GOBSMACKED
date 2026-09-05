@@ -12,7 +12,13 @@
 (function () {
   "use strict";
 
-  var CELL = 6;
+  // The cell width is computed to fit the panel rather than fixed at 6 px.
+  // EGFR at 6 px is a 7,260 px SVG inside a 1,300 px panel, which works only as
+  // long as every browser gets overflow and grid minimums exactly right, and is
+  // unreadable even when they do. Below MIN_CELL the track scrolls, but it is
+  // then scrolling a strip a few times the panel width, not fifty.
+  var MAX_CELL = 6;
+  var MIN_CELL = 2;
   var TRACK_Y = 26;
   var TRACK_H = 16;
   var DOMAIN_Y = 46;
@@ -46,6 +52,9 @@
     this.host.innerHTML = "";
     if (!this.length) return;
 
+    var available = this.host.clientWidth || 900;
+    var CELL = Math.max(MIN_CELL, Math.min(MAX_CELL, Math.floor(available / this.length)));
+    this.cell = CELL;
     var width = this.length * CELL;
     var svg = el("svg", { width: width, height: HEIGHT, viewBox: "0 0 " + width + " " + HEIGHT });
 
@@ -113,6 +122,7 @@
 
     var first = (data.pfam || [])[0];
     if (first) this.host.scrollLeft = Math.max(0, (first.start - 20) * CELL);
+    this.watchResize(data);
   };
 
   function _title(text) {
@@ -120,6 +130,23 @@
     node.textContent = text;
     return node;
   }
+
+  /* Re-render on resize: the cell width is a function of the panel width, and a
+     window that changes size otherwise leaves the track at its old scale. */
+  Track.prototype.watchResize = function (data) {
+    var self = this;
+    if (self._resizeBound) return;
+    self._resizeBound = true;
+    var timer = null;
+    window.addEventListener("resize", function () {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(function () {
+        var selected = self.residues();
+        self.render(data);
+        self.setSelected(selected);
+      }, 200);
+    });
+  };
 
   Track.prototype.toggle = function (residue) {
     if (this.selected[residue]) delete this.selected[residue];
