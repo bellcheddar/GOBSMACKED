@@ -383,6 +383,15 @@ pre.cmd {
 .track .feature { fill: rgba(255, 180, 84, .35); }
 .track .tick { stroke: var(--phos); stroke-width: 1.5; }
 .track text { fill: var(--muted); font-size: 9px; }
+/* The named positions from the Family panel, written onto the track. Same size
+   as the ruler numbering, in phosphor because they are the same thing the ticks
+   are, and non-selectable so dragging across the track does not highlight them
+   instead of picking residues. */
+.track text.position-label {
+  fill: var(--phos); font-size: 9px;
+  -webkit-user-select: none; user-select: none; pointer-events: none;
+}
+.track text.domain-label { fill: var(--text); font-size: 9px; opacity: .75; pointer-events: none; }
 
 /* --- Plots ------------------------------------------------------------ */
 .plot { width: 100%; height: 260px; }
