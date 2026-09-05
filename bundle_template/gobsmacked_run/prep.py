@@ -99,7 +99,8 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     writer.close()
 
     log(f"prep: receptor and ligand written ({mol.GetNumHeavyAtoms()} heavy atoms)")
-    return {"warnings": warnings, "heavy_atoms": mol.GetNumHeavyAtoms()}
+    return {"warnings": warnings, "heavy_atoms": mol.GetNumHeavyAtoms(),
+            "headline": f"{mol.GetNumHeavyAtoms()} heavy atoms in the ligand"}
 
 
 def trim_to_range(model: Path, protein: dict, work: Path, log, warnings: list[str]) -> Path:

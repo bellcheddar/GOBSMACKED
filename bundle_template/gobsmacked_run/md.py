@@ -13,8 +13,11 @@ the chemistry.
 from __future__ import annotations
 
 import shutil
+import time
 from pathlib import Path
 from typing import Any, Optional
+
+from .console import bar_for
 
 # Hydrogen mass repartitioning at 4 amu with a 2 fs step. HMR permits 4 fs, and
 # 4 fs with a ligand that has a fast internal mode is where an MD run quietly
@@ -37,12 +40,12 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     # cold cache and a busy machine took sixteen minutes to import on the first
     # real run: long enough to look like a hang with nothing on screen. Say what
     # is happening before paying for it.
-    log("md: importing OpenMM and the OpenFF toolkit (slow on a cold cache)")
-    import numpy as np
-    import openmm
-    from openmm import app, unit
-    from openmmforcefields.generators import SystemGenerator
-    from openff.toolkit import Molecule
+    with bar_for(log, "importing OpenMM and the OpenFF toolkit"):
+        import numpy as np
+        import openmm
+        from openmm import app, unit
+        from openmmforcefields.generators import SystemGenerator
+        from openff.toolkit import Molecule
 
     md_cfg = campaign.get("md") or {}
     warnings: list[str] = []
@@ -76,14 +79,19 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     modeller.add(ligand_topology, ligand_positions)
     solute_atoms = modeller.topology.getNumAtoms()
 
-    log(f"md: solvating {solute_atoms} solute atoms, {PADDING_NM * 10:.0f} A padding")
-    modeller.addSolvent(generator.forcefield, model="tip3p",
-                        padding=PADDING_NM * unit.nanometer,
-                        ionicStrength=IONIC_STRENGTH_M * unit.molar, neutralize=True)
+    with bar_for(log, f"solvating {solute_atoms} solute atoms, "
+                      f"{PADDING_NM * 10:.0f} A padding, 0.15 M NaCl"):
+        modeller.addSolvent(generator.forcefield, model="tip3p",
+                            padding=PADDING_NM * unit.nanometer,
+                            ionicStrength=IONIC_STRENGTH_M * unit.molar, neutralize=True)
     total_atoms = modeller.topology.getNumAtoms()
     log(f"md: {total_atoms} atoms in the box")
 
-    system = generator.create_system(modeller.topology, molecules=[ligand])
+    # Where the ligand's charges are assigned, and where the two warnings that
+    # noise.py silences are raised. Both were chased down and cleared; the
+    # evidence is in that file.
+    with bar_for(log, "assigning parameters (AM1BCC charges for the ligand)"):
+        system = generator.create_system(modeller.topology, molecules=[ligand])
     restraint = add_restraints(system, modeller.topology, modeller.positions, solute_atoms)
     system.addForce(openmm.MonteCarloBarostat(PRESSURE_BAR * unit.bar,
                                               TEMPERATURE_K * unit.kelvin))
@@ -96,20 +104,22 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     simulation.context.setPositions(modeller.positions)
 
     steps_minimise = int(md_cfg.get("minimise_steps", 5000))
-    log(f"md: minimising, {steps_minimise} steps")
-    simulation.minimizeEnergy(maxIterations=steps_minimise)
+    with bar_for(log, f"minimising, up to {steps_minimise} steps"):
+        simulation.minimizeEnergy(maxIterations=steps_minimise)
     write_complex(simulation, results / "complex_min.pdb", solute_atoms)
 
     equil_ps = float(md_cfg.get("equilibration_ps", 100))
     equil_steps = int(equil_ps * 1000 / TIMESTEP_FS)
     if equil_steps:
-        log(f"md: equilibrating {equil_ps:.0f} ps, releasing restraints in {RESTRAINT_STEPS} steps")
         simulation.context.setVelocitiesToTemperature(TEMPERATURE_K * unit.kelvin)
         per_step = max(1, equil_steps // RESTRAINT_STEPS)
-        for index in range(RESTRAINT_STEPS):
-            k = RESTRAINT_K * (1.0 - index / RESTRAINT_STEPS)
-            simulation.context.setParameter("k_restraint", k)
-            simulation.step(per_step)
+        with bar_for(log, f"equilibrating {equil_ps:.0f} ps", total=equil_steps) as bar:
+            for index in range(RESTRAINT_STEPS):
+                k = RESTRAINT_K * (1.0 - index / RESTRAINT_STEPS)
+                simulation.context.setParameter("k_restraint", k)
+                simulation.step(per_step)
+                bar.update((index + 1) * per_step,
+                           note=f"restraint {k:.0f} kJ/mol/nm^2")
         simulation.context.setParameter("k_restraint", 0.0)
 
     production_ps = float(md_cfg.get("production_ps", 1000))
@@ -123,8 +133,8 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     # the analysis reads it, and a 1 ns solvated DCD is hundreds of megabytes to
     # upload for nothing.
     solute_indices = list(range(solute_atoms))
+    speed_ns_day = 0.0
     if production_steps:
-        log(f"md: production {production_ps:.0f} ps, frame every {interval_ps:.0f} ps")
         simulation.reporters.append(
             # enforcePeriodicBox=False: the subset written here IS the molecule
             # being measured, and wrapping it into the box splits it whenever it
@@ -137,13 +147,38 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
             str(results / "logs" / "md.csv"), interval_steps * 5, step=True, time=True,
             potentialEnergy=True, temperature=True, density=True, speed=True))
         (results / "logs").mkdir(parents=True, exist_ok=True)
-        simulation.step(production_steps)
+
+        # Stepped in chunks rather than in one call, so there is something to
+        # report while it runs. A chunk is a two-hundredth of the run, which is
+        # a redraw every few seconds on any machine that can do this at all, and
+        # the reporters are unaffected: OpenMM asks each of them when it next
+        # wants to be called, so the DCD frames land on their own interval
+        # whatever size the chunks are.
+        chunk = max(1, production_steps // 200)
+        done = 0
+        with bar_for(log, f"production {production_ps:.0f} ps, "
+                          f"frame every {interval_ps:.0f} ps",
+                     total=production_steps) as bar:
+            while done < production_steps:
+                step_now = min(chunk, production_steps - done)
+                started_chunk = time.time()
+                simulation.step(step_now)
+                done += step_now
+                elapsed = max(1e-6, time.time() - started_chunk)
+                ns = step_now * TIMESTEP_FS / 1e6
+                speed_ns_day = ns / elapsed * 86400
+                bar.update(done, note=f"{speed_ns_day:.1f} ns/day, "
+                                      f"{done * TIMESTEP_FS / 1000:.0f} of "
+                                      f"{production_ps:.0f} ps")
 
     write_complex(simulation, results / "complex_md_final.pdb", solute_atoms)
     write_complex(simulation, traj_dir / "topology.pdb", solute_atoms)
-    log("md: done")
+    frames = production_steps // interval_steps if interval_steps else 0
+    headline = f"{total_atoms:,} atoms, {frames} frames"
+    if speed_ns_day:
+        headline += f", {speed_ns_day:.1f} ns/day"
     return {"warnings": warnings, "atoms": total_atoms, "solute_atoms": solute_atoms,
-            "frames": production_steps // interval_steps if interval_steps else 0}
+            "frames": frames, "headline": headline}
 
 
 def add_restraints(system, topology, positions, solute_atoms: int):

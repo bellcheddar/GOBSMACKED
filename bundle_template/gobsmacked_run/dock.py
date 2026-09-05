@@ -17,6 +17,7 @@ import csv
 import json
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -48,11 +49,13 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
                             "were searched and ranked by the empirical function alone.")
 
     cmd = build_command(mode, receptor, ligand, centre, box, docking, out_dir, model)
+    log(f"dock: {mode} mode, {docking.get('n_poses', 10)} poses, "
+        f"exhaustiveness {docking.get('exhaustiveness', 16)}")
     log("dock: " + " ".join(str(c) for c in cmd))
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True)
-    (work / "pandadock.log").write_text((proc.stdout or "") + "\n" + (proc.stderr or ""))
-    if proc.returncode != 0:
-        tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-3:]
+    captured, returncode = run_with_progress(cmd, log, estimate_seconds(docking))
+    (work / "pandadock.log").write_text(captured)
+    if returncode != 0:
+        tail = captured.strip().splitlines()[-3:]
         raise RuntimeError("PandaDock failed: " + " / ".join(tail))
 
     poses_dir = results / "poses"
@@ -68,9 +71,55 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
         raise RuntimeError("PandaDock wrote no complex for the top pose.")
     shutil.copy(top_complex, results / "complex_pose1.pdb")
 
-    log(f"dock: {len(scores)} poses, best score {scores[0]['score'] if scores else '?'}")
+    best = scores[0]["score"] if scores else None
     return {"warnings": warnings, "mode": mode, "poses": len(scores),
-            "best_score": scores[0]["score"] if scores else None}
+            "best_score": best,
+            "headline": f"{len(scores)} poses, best {best} kcal/mol" if scores else "no poses"}
+
+
+def estimate_seconds(docking: dict) -> float:
+    """How long PandaDock will take, from the one run that was timed.
+
+    Measured on the EGFR campaign: 937 s for a 29 heavy-atom ligand at
+    exhaustiveness 16, of which grid construction was 114 s and the search the
+    rest. The search scales with exhaustiveness; the grid does not, it scales
+    with the box, which is why it is a constant here rather than a coefficient.
+    A prior, not a promise, and the bar says so when it runs past it.
+    """
+    exhaustiveness = float(docking.get("exhaustiveness", 16) or 16)
+    return 114.0 + 823.0 * exhaustiveness / 16.0
+
+
+def run_with_progress(cmd, log, estimate_s: float):
+    """Run PandaDock, showing what it last said and how long it has been going.
+
+    PandaDock prints "Starting docking..." and then nothing at all for a quarter
+    of an hour, which is exactly the shape of output that gets a run killed by
+    someone who thinks it has hung. Its stdout is drained on a thread so the
+    pipe cannot fill and deadlock it, and the newest line it wrote is shown
+    beside a clock.
+    """
+    import threading
+
+    from .console import bar_for
+
+    proc = subprocess.Popen([str(c) for c in cmd], stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, bufsize=1)
+    lines: list[str] = []
+
+    def drain():
+        for line in proc.stdout:                       # type: ignore[union-attr]
+            lines.append(line.rstrip())
+
+    reader = threading.Thread(target=drain, daemon=True)
+    reader.start()
+    with bar_for(log, "docking", estimate_s=estimate_s) as bar:
+        while proc.poll() is None:
+            latest = next((line for line in reversed(lines) if line.strip()), "")
+            bar.update(note=latest[:48])
+            time.sleep(0.2)
+    reader.join(timeout=5)
+    return "\n".join(lines) + "\n", proc.returncode
 
 
 def build_command(mode: str, receptor: Path, ligand: Path, centre, box, docking: dict,

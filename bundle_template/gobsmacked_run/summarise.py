@@ -21,6 +21,9 @@ from typing import Any, Optional
 
 import numpy as np
 
+from .console import bar_for
+from .noise import hush_c_stdout
+
 CONTACT_CUTOFF_NM = 0.4          # MDTraj works in nanometres throughout
 VOXEL_SPACING_A = 1.0
 PROBE_RADIUS_A = 1.4
@@ -34,10 +37,15 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     topology_path = traj_dir / "topology.pdb"
     dcd_path = traj_dir / "traj.dcd"
 
-    top = md.load_topology(str(topology_path))
-    if dcd_path.exists():
-        traj = md.load(str(dcd_path), top=top)
-    else:
+    # MDTraj's DCD plugin announces itself from C on every open, two lines that
+    # say nothing and land in the middle of the bar. See noise.hush_c_stdout.
+    with hush_c_stdout() as said:
+        top = md.load_topology(str(topology_path))
+        if dcd_path.exists():
+            traj = md.load(str(dcd_path), top=top)
+    for line in said:
+        log(f"summarise: {line}")
+    if not dcd_path.exists():
         traj = md.load(str(topology_path))
         warnings.append("No production trajectory: the summary describes the final frame alone.")
     log(f"summarise: {traj.n_frames} frames, {traj.n_atoms} atoms")
@@ -73,22 +81,38 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     interval_ps = float((campaign.get("md") or {}).get("frame_interval_ps", 10))
     times = [round(i * interval_ps, 2) for i in range(traj.n_frames)]
 
+    # Named so the bar can say which measurement is running. Pocket volume is
+    # the slow one by a wide margin, voxel counting every frame, and being able
+    # to see that it is the one still going is the whole point of naming them.
+    measurements = [
+        ("ligand RMSD", lambda: rmsd_series(traj, ligand_atoms)),
+        ("protein Ca RMSD", lambda: rmsd_series(traj, protein_ca)),
+        ("pocket Ca RMSD", lambda: rmsd_series(traj, pocket_ca)),
+        ("per-residue fluctuation", lambda: rmsf(rmsf_traj, protein_ca, top)),
+        ("pocket volume", lambda: pocket_volume_series(traj, top, ligand_atoms, pocket_ca)),
+        ("contact matrix", lambda: contact_matrix(traj, top, ligand_atoms, pocket_numbers)),
+    ]
+    keys = ["ligand_rmsd_pose1", "protein_ca_rmsd", "pocket_ca_rmsd", "rmsf",
+            "pocket_volume", "contacts"]
     summary: dict[str, Any] = {
         "frames": traj.n_frames,
         "reimaged": reimaged,
         "times_ps": times,
         "pocket_residues": pocket_numbers,
-        "ligand_rmsd_pose1": rmsd_series(traj, ligand_atoms),
-        "protein_ca_rmsd": rmsd_series(traj, protein_ca),
-        "pocket_ca_rmsd": rmsd_series(traj, pocket_ca),
-        "rmsf": rmsf(rmsf_traj, protein_ca, top),
-        "pocket_volume": pocket_volume_series(traj, top, ligand_atoms, pocket_ca),
-        "contacts": contact_matrix(traj, top, ligand_atoms, pocket_numbers),
     }
+    with bar_for(log, f"measuring {traj.n_frames} frames",
+                 total=len(measurements)) as bar:
+        for index, (label, measure) in enumerate(measurements):
+            bar.update(index, note=label)
+            summary[keys[index]] = measure()
+        bar.update(len(measurements), note="done")
+
     (traj_dir / "summary.json").write_text(json.dumps(summary))
-    log(f"summarise: ligand RMSD {summary['ligand_rmsd_pose1'][-1] if summary['ligand_rmsd_pose1'] else '?'} A "
-        f"at the last frame")
-    return {"warnings": warnings, "frames": traj.n_frames}
+    last = summary["ligand_rmsd_pose1"][-1] if summary["ligand_rmsd_pose1"] else None
+    log(f"summarise: ligand RMSD {last if last is not None else '?'} A at the last frame")
+    return {"warnings": warnings, "frames": traj.n_frames,
+            "headline": (f"{traj.n_frames} frames, ligand {last} A from the docked pose"
+                         if last is not None else f"{traj.n_frames} frames")}
 
 
 # Residues MDTraj will happily call "protein" that are not the ligand, plus the
@@ -244,12 +268,24 @@ def pocket_volume_series(traj, top, ligand_atoms, pocket_ca) -> list[float]:
 
 
 def pack(results: Path, dest: Path, log) -> Path:
-    """results/ into results.tar.gz, with results/ as the single top directory."""
+    """results/ into results.tar.gz, with results/ as the single top directory.
+
+    `dest` belongs beside run.py, at the top of the unpacked bundle, and not
+    inside `results/` where it used to be written. Two reasons, and the second
+    one is a bug rather than a preference:
+
+    * it is the one file the run produces that a person has to find, and asking
+      them to open a directory called `results` to find it among twenty PDBs is
+      one step of digging too many
+    * packing it into the directory being packed means a second `--only
+      summarise` puts the previous archive inside the new one, which is
+      invisible except as an archive that doubles in size every time
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(dest, "w:gz") as tar:
         for path in sorted(results.rglob("*")):
             if path.is_dir() or "__pycache__" in path.parts:
                 continue
             tar.add(path, arcname=f"results/{path.relative_to(results)}")
-    log(f"summarise: wrote {dest} ({dest.stat().st_size / 1e6:.1f} MB)")
+    log(f"summarise: wrote {dest.name} ({dest.stat().st_size / 1e6:.1f} MB)")
     return dest

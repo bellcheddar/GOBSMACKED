@@ -39,7 +39,8 @@ pixi add --pypi "pandadock[gnn]"
 Without it the run falls back from `hybrid` to the empirical scorer and records
 that in the archive's warnings, which is a working run rather than a failed one.
 
-Then upload `results/results.tar.gz` on the Analyze tab of the site that
+Then upload `results.tar.gz`, which the run leaves beside `run.py` at the top of
+this directory, on the Analyze tab of the site that
 generated this bundle.
 
 ## What runs
