@@ -33,6 +33,7 @@
       // load promise resolves, so focusing immediately is silently undone.
       // One frame plus a beat lands after it.
       settle(function () { complexScope.focusLigand("md_final"); });
+      drawInteractions("md_final");
       if (card.geometry && card.geometry.md_final) {
         var g = card.geometry.md_final;
         document.getElementById("complex-hud").textContent =
@@ -56,9 +57,48 @@
                                    { primary: true, color: GobViewer.COLOURS[state] || GobViewer.COLOURS.md_final });
         }).then(function () {
           settle(function () { complexScope.focusLigand(state); });
+          drawInteractions(state);
           document.getElementById("complex-hud").textContent = state.replace("_", " ");
         });
       });
+    });
+  }
+
+  /* The PLIP layer for one state, plus the legend that explains its colours.
+     Minimised has no PLIP run of its own, so the layer is simply absent there
+     rather than showing another state's interactions. */
+  function drawInteractions(state) {
+    drawPocket(state);
+    var lines = (card.interaction_lines || {})[state] || [];
+    var legend = document.getElementById("interaction-legend");
+    if (!complexScope) return;
+    if (!lines.length) {
+      if (legend) legend.innerHTML = state === "minimised"
+        ? "<span class='muted'>PLIP is run on the docked pose and the relaxed complex, not on the minimised intermediate.</span>"
+        : "";
+      complexScope.hideInteractions();
+      return;
+    }
+    complexScope.showInteractions(lines, fileUrl);
+    if (legend) {
+      legend.innerHTML = lines.map(function (entry) {
+        var hex = "#" + ("000000" + entry.colour.toString(16)).slice(-6);
+        return "<span style='margin-right:14px'><i style='display:inline-block;width:18px;" +
+               "height:2px;background:" + hex + ";vertical-align:middle;margin-right:6px'></i>" +
+               entry.type + " (" + entry.count + ")</span>";
+      }).join("");
+    }
+  }
+
+  /* The pocket residues as sticks over the cartoon. */
+  function drawPocket(state) {
+    if (!complexScope) return;
+    var file = (card.pocket_sticks || {})[state];
+    complexScope.remove("pocket").then(function () {
+      if (!file) return;
+      return complexScope.load("pocket", fileUrl(file),
+                               { color: GobViewer.COLOURS.model, format: "pdb",
+                                 representation: "ball-and-stick" });
     });
   }
 
@@ -104,7 +144,7 @@
           overlayScope.setVisible(state, !pressed);
         } else if (!pressed) {
           var files = { model: "model_apo.pdb", md_final: "complex_md_final.pdb",
-                        reference: "reference.pdb" };
+                        reference: "reference.pdb", apo: "apo_reference.pdb" };
           overlayScope.load(state, fileUrl(files[state]), { color: GobViewer.COLOURS[state] });
         }
       });

@@ -455,7 +455,9 @@
         protonation_ph: parseFloat($("ph").value) || 7.4,
       },
       pocket: state.pocket,
-      reference: state.reference || {},
+      reference: Object.assign({}, state.reference || {}, {
+        apo_pdb_id: ($("reference-apo").value.trim().toUpperCase() || null),
+      }),
       docking: { mode: $("dock-mode").value, num_poses: parseInt($("num-poses").value, 10) },
       md: {
         production_ps: parseInt($("production").value, 10),

@@ -140,7 +140,9 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
         "campaign": campaign,
         "manifest": results.manifest,
         "warnings": list(results.warnings),
-        "reference": {"pdb_id": reference.get("pdb_id"), "ligand_ccd": reference.get("ligand_ccd")},
+        "reference": {"pdb_id": reference.get("pdb_id"),
+                      "ligand_ccd": reference.get("ligand_ccd"),
+                      "apo_pdb_id": reference.get("apo_pdb_id")},
     }
 
     # --- structures ------------------------------------------------------
@@ -162,6 +164,18 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
         else:
             card["warnings"].append(
                 f"RCSB has no entry {reference['pdb_id']}, so this run is unverified.")
+
+    # The apo reference is optional and purely for the overlay: it is what the
+    # pocket looked like with nothing bound, which is the shape a predicted
+    # model tends to resemble.
+    if reference.get("apo_pdb_id"):
+        apo = fetch_svc.fetch_pdb(reference["apo_pdb_id"])
+        if apo:
+            inter_svc.as_pdb(apo["path"], results.root / "apo_reference.pdb",
+                             chain=reference.get("apo_chain") or None, keep_ligand=False)
+        else:
+            card["warnings"].append(
+                f"RCSB has no entry {reference['apo_pdb_id']}, so the overlay has no apo state.")
 
     # --- superposition ---------------------------------------------------
     geometry: dict[str, Any] = {}
@@ -207,6 +221,24 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
 
     card["plip"] = {k: {"counts": v.get("counts", {}), "n": v.get("n", 0),
                         "error": v.get("error")} for k, v in plip.items()}
+    # Geometry for the 3D view, drawn from PLIP's own endpoints so the dashed
+    # lines in the scope are the interactions the table lists rather than a
+    # second opinion computed by the viewer.
+    card["interaction_lines"] = {
+        state: inter_svc.write_interaction_lines(plip[state], results.root, f"lines_{state}")
+        for state in ("pose1", "md_final") if state in plip and not plip[state].get("error")
+    }
+    # The pocket residues as their own file, so the Complex view can draw them
+    # as sticks over the cartoon.
+    pocket_residues = pocket.get("residues") or []
+    card["pocket_sticks"] = {}
+    for state, path in (("pose1", pose1), ("minimised", minimised), ("md_final", md_final)):
+        if path is None:
+            continue
+        written = inter_svc.write_pocket_sticks(path, pocket_residues,
+                                                results.root / f"pocket_{state}.pdb")
+        if written:
+            card["pocket_sticks"][state] = written.name
     card["jaccard"] = jaccards
     if reference_fp:
         md_fp = {tuple(x.split(":", 1)) for x in fingerprints.get("md_final", [])}

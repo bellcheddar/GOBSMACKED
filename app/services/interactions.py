@@ -99,6 +99,12 @@ def parse_plip_xml(xml_text: str, ligand_ccd: Optional[str] = None) -> dict[str,
                     "distance": _as_float(item.findtext("dist")
                                           or item.findtext("dist_h-a")
                                           or item.findtext("centdist")),
+                    # PLIP reports both ends of every interaction. Keeping them
+                    # is what lets the 3D view draw the same interactions the
+                    # table lists, rather than a second opinion computed by the
+                    # viewer that would quietly disagree with it.
+                    "ligcoo": _coords(item.find("ligcoo")),
+                    "protcoo": _coords(item.find("protcoo")),
                 })
         sites.append({"ligand": hetid, "n": len(rows), "interactions": rows})
 
@@ -215,8 +221,143 @@ def as_pdb(source: str | Path, dest: str | Path, chain: Optional[str] = None,
     return dest
 
 
+def _coords(node) -> Optional[list[float]]:
+    if node is None:
+        return None
+    try:
+        return [float(node.findtext(axis)) for axis in ("x", "y", "z")]
+    except (TypeError, ValueError):
+        return None
+
+
 def _as_float(v) -> Optional[float]:
     try:
         return round(float(v), 3)
     except (TypeError, ValueError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# Drawing the interactions in 3D
+# ---------------------------------------------------------------------------
+
+# One colour per interaction type, matching the app's tokens. These are the
+# colours the viewer uses; the legend on the page is generated from this map so
+# the two cannot disagree.
+INTERACTION_COLOURS = {
+    "hbond": 0x5de1e6,
+    "hydrophobic": 0x9fb0c7,
+    "water bridge": 0x7ec8e2,
+    "salt bridge": 0xffb454,
+    "pi stacking": 0xc39cff,
+    "pi cation": 0xff8a5c,
+    "halogen bond": 0x7ee2a8,
+    "metal": 0xff5c5c,
+}
+
+# Dashes per interaction. Mol*'s viewer build exports no shape builder, so the
+# lines are drawn as structures: each dash is a two-atom fragment with a CONECT
+# record, and a run of them along the interaction vector reads as a dashed line.
+DASHES = 4
+DASH_FRACTION = 0.55        # of each segment that is drawn rather than gap
+
+
+def write_interaction_lines(result: dict, out_dir: Path, prefix: str) -> list[dict]:
+    """One small PDB per interaction type present, for the viewer to load.
+
+    Returns a list of {type, file, colour, count} so the page can build both the
+    toggle and the legend from the same data.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    by_type: dict[str, list[dict]] = {}
+    for row in result.get("interactions", []):
+        if not row.get("ligcoo") or not row.get("protcoo"):
+            continue
+        by_type.setdefault(row["type"], []).append(row)
+
+    written = []
+    for kind, rows in sorted(by_type.items()):
+        lines = []
+        serial = 1
+        conect = []
+        for row in rows:
+            for start, end in _dash_segments(row["protcoo"], row["ligcoo"]):
+                for point in (start, end):
+                    lines.append(
+                        f"HETATM{serial:5d}  C   DSH X{len(conect) + 1:4d}    "
+                        f"{point[0]:8.3f}{point[1]:8.3f}{point[2]:8.3f}  1.00  0.00           C"
+                    )
+                    serial += 1
+                conect.append((serial - 2, serial - 1))
+        if not conect:
+            continue
+        for a, b in conect:
+            lines.append(f"CONECT{a:5d}{b:5d}")
+        lines.append("END")
+        name = f"{prefix}_{kind.replace(' ', '_')}.pdb"
+        (out_dir / name).write_text("\n".join(lines) + "\n")
+        written.append({"type": kind, "file": name,
+                        "colour": INTERACTION_COLOURS.get(kind, 0x9fb0c7),
+                        "count": len(rows)})
+    return written
+
+
+def _dash_segments(start, end, dashes: int = DASHES):
+    """Split a line into `dashes` drawn pieces with gaps between them."""
+    ax, ay, az = start
+    bx, by, bz = end
+    for i in range(dashes):
+        t0 = i / dashes
+        t1 = t0 + DASH_FRACTION / dashes
+        yield (
+            [ax + (bx - ax) * t0, ay + (by - ay) * t0, az + (bz - az) * t0],
+            [ax + (bx - ax) * t1, ay + (by - ay) * t1, az + (bz - az) * t1],
+        )
+
+
+def write_pocket_sticks(structure: str | Path, residues, dest: Path,
+                        chain: Optional[str] = None) -> Optional[Path]:
+    """Just the pocket residues, as their own file.
+
+    The Complex view wants them drawn as sticks over the cartoon, and Mol*'s
+    viewer build has no selection language to carve them out of a loaded
+    structure. Writing them as a second small structure is the same route the
+    interaction lines take, and it costs a few kilobytes.
+    """
+    import gemmi
+
+    wanted = set()
+    for item in residues or []:
+        tail = str(item).split(":")[-1]
+        try:
+            wanted.add(int(tail))
+        except ValueError:
+            continue
+    if not wanted:
+        return None
+
+    st = gemmi.read_structure(str(structure))
+    st.setup_entities()
+    st.remove_waters()
+    st.remove_hydrogens()
+    out = gemmi.Structure()
+    model = gemmi.Model("1")
+    for ch in st[0]:
+        if chain and ch.name != chain:
+            continue
+        keep = [res.clone() for res in ch if res.seqid.num in wanted]
+        if not keep:
+            continue
+        new_chain = gemmi.Chain(ch.name)
+        for res in keep:
+            new_chain.add_residue(res)
+        model.add_chain(new_chain)
+    if not len(model):
+        return None
+    out.add_model(model)
+    out.setup_entities()
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(out.make_pdb_string())
+    return dest

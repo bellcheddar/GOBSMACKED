@@ -112,6 +112,7 @@
           <button data-state="md_final" aria-pressed="true">MD final</button>
         </div>
       </div>
+      <p class="note" id="interaction-legend" style="margin-top:12px"></p>
       {% if card.pandamap and card.pandamap.png %}
       <h3>PandaMap, MD-final</h3>
       <img src="{{ url_for('runs.run_file', job_id=row['job_id'], name=card.pandamap.png) }}"
@@ -130,6 +131,9 @@
           <button class="model" data-state="model" aria-pressed="false">Model</button>
           <button data-state="md_final" aria-pressed="true">MD final</button>
           <button class="reference" data-state="reference" aria-pressed="true">Reference</button>
+          {% if card.reference.apo_pdb_id %}
+          <button class="apo" data-state="apo" aria-pressed="false">Apo {{ card.reference.apo_pdb_id }}</button>
+          {% endif %}
         </div>
       </div>
       {% if card.displacements %}

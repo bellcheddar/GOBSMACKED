@@ -180,7 +180,16 @@
         self.entries[name] = entry;
         if (!self.primary || options.primary) self.primary = entry;
         var colour = options.color !== undefined ? options.color : COLOURS[name];
-        return self.theme(entry, colour, options.ligandColor);
+        return self.theme(entry, colour, options.ligandColor).then(function () {
+          if (!options.representation) return;
+          var manager = self.plugin.managers.structure.component;
+          return Promise.all((entry.components || []).map(function (component) {
+            if (!component.representations.length) return null;
+            return manager.updateRepresentations(
+              [component], component.representations[0],
+              { type: { name: options.representation, params: {} } });
+          }));
+        });
       });
     }).then(function () { return self; });
   };
@@ -275,6 +284,37 @@
   };
 
   Scope.prototype.has = function (name) { return !!this.entries[name]; };
+
+  /* PLIP's interactions, drawn as dashed lines.
+
+     Mol*'s viewer build exports Viewer and almost nothing else: there is no
+     shape builder to draw a line with. So each interaction arrives as a tiny
+     structure of two-atom fragments joined by CONECT records, one file per
+     interaction type, and a run of those fragments along the interaction vector
+     reads as a dash. Uniform colour per file is what makes the type legible. */
+  Scope.prototype.showInteractions = function (lines, urlFor) {
+    var self = this;
+    var previous = Object.keys(self.entries).filter(function (name) {
+      return name.indexOf("interaction:") === 0;
+    });
+    return Promise.all(previous.map(function (name) { return self.remove(name); }))
+      .then(function () {
+        return (lines || []).reduce(function (chain, entry) {
+          return chain.then(function () {
+            return self.load("interaction:" + entry.type, urlFor(entry.file),
+                             { color: entry.colour, format: "pdb",
+                               representation: "line" });
+          });
+        }, Promise.resolve());
+      });
+  };
+
+  Scope.prototype.hideInteractions = function () {
+    var self = this;
+    return Promise.all(Object.keys(self.entries)
+      .filter(function (name) { return name.indexOf("interaction:") === 0; })
+      .map(function (name) { return self.remove(name); }));
+  };
 
   Scope.prototype.clearAll = function () {
     this.entries = {};
