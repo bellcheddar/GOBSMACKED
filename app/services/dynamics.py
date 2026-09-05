@@ -44,29 +44,43 @@ def summarise(summary: dict) -> dict[str, Any]:
         "pocket_residues": summary.get("pocket_residues") or [],
     }
     out["drift"] = drift(times, lig)
+    out["drift_window_ps"] = drift_window(times)
     out["contact_persistence"] = contact_persistence(out["contacts"])
     return out
 
 
 def drift(times_ps: list[float], values: list[float],
           window: float = DRIFT_WINDOW_PS) -> Optional[float]:
-    """Mean over the last `window` ps minus the mean over the first `window` ps.
+    """Mean over the last window minus the mean over the first window.
 
-    Positive means the ligand moved away from where docking put it. Returns None
-    when the run is too short for two non-overlapping windows: a number computed
-    from windows that share frames would flatter every short run.
+    Positive means the ligand moved away from where docking put it. The window
+    is 200 ps by default, which is the threshold table's definition, but a run
+    shorter than 400 ps would have no two non-overlapping windows at that size:
+    there it shrinks to a quarter of the run, so a short test run still reports
+    a drift instead of a blank. Overlapping windows are never used; they would
+    share frames and flatter every short run.
     """
     if not times_ps or len(times_ps) != len(values) or len(times_ps) < 4:
         return None
     t = np.asarray(times_ps, dtype=float)
     v = np.asarray(values, dtype=float)
-    if (t[-1] - t[0]) < 2 * window:
+    duration = t[-1] - t[0]
+    if duration <= 0:
         return None
+    window = min(window, duration / 4.0)
     first = v[t <= t[0] + window]
     last = v[t >= t[-1] - window]
     if len(first) == 0 or len(last) == 0:
         return None
     return round(float(last.mean() - first.mean()), 3)
+
+
+def drift_window(times_ps: list[float], window: float = DRIFT_WINDOW_PS) -> Optional[float]:
+    """The window `drift` actually used, so the card can name it."""
+    if not times_ps or len(times_ps) < 2:
+        return None
+    duration = times_ps[-1] - times_ps[0]
+    return round(min(window, duration / 4.0), 1) if duration > 0 else None
 
 
 def contact_persistence(contacts: dict) -> list[dict]:

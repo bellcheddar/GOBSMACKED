@@ -397,14 +397,18 @@ def _ligand_mol(path: str | Path, ccd: Optional[str], smiles: str):
     if keep is None:
         return None
 
-    lines = []
-    for i, atom in enumerate(keep, start=1):
-        lines.append(
-            f"HETATM{i:5d} {atom.name:<4s}{keep.name:>3s} A   1    "
-            f"{atom.pos.x:8.3f}{atom.pos.y:8.3f}{atom.pos.z:8.3f}  1.00  0.00"
-            f"          {atom.element.name:>2s}"
-        )
-    block = "\n".join(lines) + "\nEND\n"
+    # Written by gemmi rather than by hand: a PDB line is fixed-width, and an
+    # atom name one column out of place parses to a molecule with zero atoms
+    # that raises nothing at all until something asks it for a conformer.
+    single = gemmi.Structure()
+    model = gemmi.Model("1")
+    chain = gemmi.Chain("A")
+    chain.add_residue(keep.clone())
+    model.add_chain(chain)
+    single.add_model(model)
+    single.setup_entities()
+    block = single.make_pdb_string()
+
     mol = Chem.MolFromPDBBlock(block, sanitize=False, removeHs=True)
     if mol is None:
         return None

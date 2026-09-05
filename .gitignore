@@ -14,3 +14,6 @@ gobsmacked.db-*
 # Session transcripts and scratch
 *.txt.session
 scratch/
+
+# Fixture inputs: regenerable by tests/fixtures/build_fixtures.py
+tests/fixtures/_structures/

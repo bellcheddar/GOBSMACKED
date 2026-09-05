@@ -1,0 +1,136 @@
+"""Prepare: what the panels post, and what the bundle comes out as."""
+
+from __future__ import annotations
+
+import tarfile
+
+import pytest
+import yaml
+
+from app.services import bundle
+from tests.conftest import needs_network
+
+EGFR_SMILES = "COCCOc1cc2ncnc(Nc3cccc(C#C)c3)c2cc1OCCOC"
+
+
+def test_residue_parsing_defaults_the_chain():
+    assert bundle.parse_residues(["A:718", "745", "B:790"]) == [("A", 718), ("A", 745), ("B", 790)]
+    assert bundle.parse_residues(["nonsense", ""]) == []
+
+
+def test_ligand_endpoint_validates_and_draws(client):
+    ok = client.post("/api/ligand", json={"smiles": EGFR_SMILES})
+    assert ok.status_code == 200
+    body = ok.get_json()
+    assert body["formula"] == "C22H23N3O4"
+    assert body["svg"].startswith("<?xml") or "<svg" in body["svg"]
+
+    bad = client.post("/api/ligand", json={"smiles": "this is not a molecule"})
+    assert bad.status_code == 400
+    assert "RDKit" in bad.get_json()["error"]
+
+
+def test_bundle_needs_a_pocket(client):
+    response = client.post("/api/bundle", json={
+        "protein": {"sequence": "MKV", "chain": "A"},
+        "ligand": {"smiles": EGFR_SMILES, "name": "erlotinib"},
+        "pocket": {},
+    })
+    assert response.status_code == 400
+    assert "pocket" in response.get_json()["error"].lower()
+
+
+def test_bundle_is_written_and_is_complete(client, app):
+    from app import config, db
+
+    response = client.post("/api/bundle", json={
+        "title": "test run",
+        "visibility": "private",
+        "protein": {"uniprot": "P00533", "sequence": "MRPSGTAGAALLALLAALCPASRA",
+                    "chain": "A", "family": "kinase", "source_structure": "afdb",
+                    "source_id": "AF-P00533-F1"},
+        "ligand": {"name": "erlotinib", "smiles": EGFR_SMILES, "protonation_ph": 7.4},
+        "pocket": {"method": "residues", "residues": ["A:745"],
+                   "center": [1.0, 2.0, 3.0], "box": [22, 22, 22]},
+        "reference": {"pdb_id": "1M17", "ligand_ccd": "AQ4", "chain": "A"},
+        "docking": {"mode": "hybrid", "num_poses": 10},
+        "md": {"production_ps": 1000, "frame_interval_ps": 10},
+    })
+    assert response.status_code == 200, response.get_json()
+    body = response.get_json()
+    job_id = body["job_id"]
+
+    # The owner token is shown once and stored only as a hash.
+    with app.app_context():
+        row = db.get_job(job_id)
+    assert row["visibility"] == "private"
+    assert row["owner_hash"] == db.hash_token(body["owner_token"])
+    assert body["owner_token"] not in (row["campaign_yaml"] or "")[:0] + str(row["owner_hash"])
+
+    archive = config.RUNS_DIR / job_id / f"run_bundle_{job_id}.tar.gz"
+    assert archive.exists()
+    with tarfile.open(archive) as tar:
+        names = {n.split("/", 1)[-1] for n in tar.getnames()}
+        campaign = yaml.safe_load(tar.extractfile(f"run_bundle_{job_id}/campaign.yaml").read())
+    for needed in ("run.py", "pixi.toml", "campaign.yaml", "README.md",
+                   "gobsmacked_run/fold.py", "gobsmacked_run/prep.py",
+                   "gobsmacked_run/dock.py", "gobsmacked_run/md.py",
+                   "gobsmacked_run/summarise.py", "gobsmacked_run/schema.py"):
+        assert needed in names, f"{needed} missing from the bundle"
+
+    assert campaign["job_id"] == job_id
+    assert campaign["protein"]["family"] == "kinase"
+    assert campaign["pocket"]["center"] == [1.0, 2.0, 3.0]
+    # The token rides inside the campaign so uploading results to a private run
+    # needs no typing.
+    assert campaign["owner_token"] == body["owner_token"]
+
+
+def test_bundle_download_is_guarded(client, app):
+    response = client.post("/api/bundle", json={
+        "visibility": "private",
+        "protein": {"sequence": "MRPSGTAGAALLALL", "chain": "A"},
+        "ligand": {"name": "x", "smiles": "CCO"},
+        "pocket": {"residues": ["A:1"], "center": [0, 0, 0], "box": [18, 18, 18]},
+    })
+    job_id = response.get_json()["job_id"]
+    token = response.get_json()["owner_token"]
+    assert client.get(f"/runs/{job_id}/bundle").status_code == 403
+    assert client.get(f"/runs/{job_id}/bundle?token={token}").status_code == 200
+
+
+@needs_network
+def test_fetch_resolves_an_accession_to_a_model(client):
+    response = client.post("/api/fetch", json={"query": "P00533"})
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["accession"] == "P00533"
+    assert body["source_structure"] in ("afdb", "pdb", "esm_atlas")
+    assert len(body["sequence"]) == 1210
+    # The sequence track counts from 1 and the model may not, so the mapping
+    # comes back with the structure.
+    assert body["numbering"]["745"]
+
+
+@needs_network
+def test_annotation_routes_a_kinase_to_klifs(client):
+    from app.services import fetch as fetch_svc
+
+    entry = fetch_svc.fetch_uniprot("P00533")
+    response = client.post("/api/annotate", json={
+        "uniprot": "P00533", "sequence": entry["sequence"], "gene": "EGFR",
+        "features": entry["features"]})
+    body = response.get_json()
+    assert body["family"] == "kinase"
+    assert body["klifs"]["named_positions"]["gatekeeper"] == 790
+    assert any(p["label"] == "gatekeeper" for p in body["positions"])
+
+
+@needs_network
+def test_reference_search_prefers_the_same_ligand(client):
+    response = client.post("/api/references", json={"uniprot": "P00533", "smiles": EGFR_SMILES})
+    body = response.get_json()
+    assert body["default"] == "1M17"
+    top = body["entries"][0]
+    assert top["best_ligand"]["ccd"] == "AQ4"
+    assert top["tanimoto"] == 1.0
