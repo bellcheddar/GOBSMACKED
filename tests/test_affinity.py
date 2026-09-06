@@ -94,18 +94,30 @@ def test_the_msa_cache_key_is_the_trimmed_sequence():
     assert stage.msa_key("MKVLA") != stage.msa_key("MKVLAG")
 
 
-def test_frames_come_from_the_tail_of_the_run(tmp_path):
-    (tmp_path / "traj").mkdir()
-    (tmp_path / "traj" / "summary.json").write_text('{"frames": 100}', encoding="utf-8")
-    indices = stage.frame_indices(tmp_path, {"n_frames": 5, "window_fraction": 0.2})
+def test_frames_come_from_the_tail_of_the_run():
+    indices = stage.frame_indices(100, {"n_frames": 5, "window_fraction": 0.2})
     assert len(indices) == 5
     assert min(indices) >= 80 and max(indices) <= 99
 
 
-def test_a_short_run_still_yields_frames(tmp_path):
-    (tmp_path / "traj").mkdir()
-    (tmp_path / "traj" / "summary.json").write_text('{"frames": 3}', encoding="utf-8")
-    assert stage.frame_indices(tmp_path, {"n_frames": 5}) == [2]
+def test_a_short_run_still_yields_frames():
+    assert stage.frame_indices(3, {"n_frames": 5}) == [2]
+
+
+def test_the_frame_count_does_not_come_from_a_file_written_later():
+    """It used to be read from traj/summary.json, which summarise writes AFTER
+    this stage runs. The lookup failed, the cluster fell back to the single
+    final frame, and a run that asked for five reported one with a spread of
+    zero. Nothing errored; the number was simply less than it claimed."""
+    import inspect
+
+    # The invariant, not the prose: this takes a count and touches no
+    # filesystem, so there is no file whose absence can quietly shrink it.
+    # (Checking the source text instead matched the sentence in the docstring
+    # describing the bug, which is the second time that trick has failed here.)
+    parameters = list(inspect.signature(stage.frame_indices).parameters)
+    assert parameters[0] == "n_frames"
+    assert stage.frame_indices(50, {"n_frames": 5, "window_fraction": 0.2}) == [40, 42, 44, 46, 48]
 
 
 def test_the_stage_declines_rather_than_raises_without_a_campaign(tmp_path):

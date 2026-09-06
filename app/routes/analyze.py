@@ -30,6 +30,7 @@ from ..services import fetch as fetch_svc
 from ..services import ingest as ingest_svc
 from ..services import interactions as inter_svc
 from ..services import modes as modes_svc
+from ..services import poses as poses_svc
 from ..services import movie as movie_svc
 from ..services import scorecard as score_svc
 from ..services import superpose as sup_svc
@@ -244,6 +245,10 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
     pocket_target = final.get("pocket_residues_reference") if reference_pdb else None
     superposed: dict[str, Any] = {}
     aligned_paths: dict[str, Any] = {}
+    # Kept because the poses in poses.sdf need the same transform pose1 got, or
+    # they are drawn in the model's own frame and read as a catastrophic
+    # prediction rather than as an unapplied transform.
+    fits: dict[str, Any] = {}
     for label, path in states.items():
         if path is None:
             continue
@@ -256,6 +261,7 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
         if fit is None:
             aligned_paths[label] = path
             continue
+        fits[label] = fit
         dest = results.root / f"superposed_{label}.pdb"
         sup_svc.write_transformed(path, dest, fit["rotation"], fit["translation"])
         aligned_paths[label] = dest
@@ -365,6 +371,25 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
     else:
         card["motion"] = {"error": "No trajectory in the archive, so there is nothing to play."}
 
+    # --- every pose, not just the one that went forward -------------------
+    # The archive has always carried all of them and the page has always shown
+    # one. Measuring the rest against the crystal is what separates a scoring
+    # failure from a sampling one, and those have different fixes.
+    pose_fit = fits.get("pose1") or {}
+    card["poses"] = poses_svc.overlay(
+        results.root / "poses" / "poses.sdf",
+        _read_scores(results.root / "poses" / "scores.csv"),
+        Path(reference_pdb) if reference_pdb else None,
+        pose_fit.get("rotation"), pose_fit.get("translation"),
+        results.root, reference_ccd=reference.get("ligand_ccd"),
+        smiles=ligand.get("smiles", ""),
+        # superposed_pose1, and not superposed_model, even though docking used
+        # the model: every state gets its OWN fit, so the model's superposed
+        # copy sits in a different frame from the one pose1's transform moves
+        # these poses into. Measuring across the two put every pose 0.5 A inside
+        # the protein, which is not a clash, it is two transforms mixed.
+        receptor_path=aligned_paths.get("pose1") or aligned_paths.get("model"))
+
     # --- affinity --------------------------------------------------------
     # Read, not computed: all of it happened on the machine with the GPU. Never
     # folded into the composite, and absent for every archive built before the
@@ -452,6 +477,19 @@ def classify_modes(family: str, protein: dict, sequence: str, md_final, referenc
 
     out["verdict"] = modes_svc.compare_modes(out.get("predicted") or {}, out.get("reference"))
     return out
+
+
+def _read_scores(path: Path) -> list[dict]:
+    """scores.csv, when the archive has one. Older archives may not."""
+    import csv
+
+    if not path.exists():
+        return []
+    try:
+        with open(path, newline="", encoding="utf-8") as fh:
+            return list(csv.DictReader(fh))
+    except (OSError, csv.Error):
+        return []
 
 
 def build_stages(card: dict, results: ingest_svc.Results) -> list[dict]:

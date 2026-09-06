@@ -334,6 +334,20 @@ input.example:focus, textarea.example:focus { color: var(--text); font-style: no
    graded metrics above it; the change column is the only coloured part,
    because the direction of "better" differs per row and the arrow is the
    thing worth finding at a glance. */
+/* The pose table. Dense on purpose: seven numbers a row and ten rows, so the
+   figures are tabular and the only colour marks the two rows worth finding. */
+table.poses { width: 100%; border-collapse: collapse; margin: 4px 0 10px; font-size: 12px; }
+table.poses th { text-align: right; font-weight: 600; color: var(--muted);
+                 padding: 4px 5px; border-bottom: 1px solid var(--line); }
+table.poses th:first-child { text-align: left; }
+table.poses td { text-align: right; padding: 4px 5px; font-variant-numeric: tabular-nums;
+                 border-bottom: 1px solid var(--panel-2); }
+table.poses td:first-child { text-align: left; color: var(--muted); }
+table.poses tr.chosen td { color: var(--phos); }      /* the pose that went to MD */
+table.poses tr.nearest td { color: var(--amber); }    /* the pose nearest the crystal */
+table.poses td.good { color: var(--green); }
+table.poses td.bad { color: var(--red); }
+
 table.affinity { width: 100%; border-collapse: collapse; margin: 6px 0 10px; }
 table.affinity th { text-align: right; font-size: 11px; font-weight: 600;
                     color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); }

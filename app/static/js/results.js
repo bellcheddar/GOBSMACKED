@@ -120,6 +120,71 @@
     });
   }
 
+  /* Every pose, overlaid on the receptor and the crystal ligand.
+
+     Three loads rather than one per pose: the top pose in phosphor because it
+     is the one that went to MD, the rest in grey, and the crystal ligand in
+     amber. Ten separate colours would be a rainbow, and the distinction the eye
+     actually needs is "the pose that went forward" against "the ones that did
+     not". */
+  var posesScope = null;
+
+  function startPoses() {
+    var host = document.getElementById("poses-viewer");
+    var dp = card.poses || {};
+    if (!host || !dp.rows || !dp.rows.length) return;
+    GobViewer.create(host).then(function (scope) {
+      posesScope = scope;
+      var work = scope.load("protein", fileUrl(stateFile("pose1")),
+                            { primary: true, color: GobViewer.COLOURS.model });
+      if (dp.rest_file) {
+        work = work.then(function () {
+          // ligandColor, not color: these files are nothing but ligand, and
+          // `color` themes the protein component, so the poses came out in
+          // default element colours -- a red and blue tangle with no way to
+          // tell the chosen pose from the rest.
+          return scope.load("rest", fileUrl(dp.rest_file),
+                            { color: 0x7f8fa6, ligandColor: 0x7f8fa6,
+                              representation: "ball-and-stick" });
+        });
+      }
+      work = work.then(function () {
+        return scope.load("top", fileUrl(dp.top_file),
+                          { color: 0x5de1e6, ligandColor: 0x5de1e6,
+                            representation: "ball-and-stick" });
+      });
+      if (dp.reference_file) {
+        work = work.then(function () {
+          return scope.load("reference", fileUrl(dp.reference_file),
+                            { color: GobViewer.COLOURS.reference,
+                              ligandColor: GobViewer.COLOURS.reference,
+                              representation: "ball-and-stick" });
+        });
+      }
+      // On the poses, not on the protein: the receptor is context and fills the
+      // panel if the camera is left to frame everything.
+      return work.then(function () { return scope.focusLigand("top"); });
+    }).then(function () {
+      var best = dp.best_by_rmsd || {};
+      document.getElementById("poses-hud").textContent =
+        dp.count + " poses \u00b7 top " +
+        (dp.rows[0].rmsd !== null ? dp.rows[0].rmsd + " A" : "unmeasured") +
+        (best.rank && best.rank !== 1 ? " \u00b7 nearest is pose " + best.rank +
+         " at " + best.rmsd + " A" : "") + " from the crystal";
+    }).catch(function (err) {
+      document.getElementById("poses-hud").textContent = "viewer unavailable: " + err.message;
+    });
+
+    document.querySelectorAll("#poses-toggles button").forEach(function (button) {
+      button.addEventListener("click", function () {
+        if (!posesScope) return;
+        var on = button.getAttribute("aria-pressed") !== "true";
+        button.setAttribute("aria-pressed", on ? "true" : "false");
+        posesScope.setVisible(button.getAttribute("data-layer"), on);
+      });
+    });
+  }
+
   function startOverlay() {
     var host = document.getElementById("overlay-viewer");
     if (!host) return;
@@ -212,6 +277,7 @@
     try { card = JSON.parse(node.textContent); } catch (err) { return; }
     GobPlots.all(card.dynamics);
     startComplex();
+  startPoses();
     startOverlay();
     ownerControls();
 
