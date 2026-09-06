@@ -62,7 +62,8 @@ def engine_versions() -> dict[str, str]:
         except Exception:
             continue
     try:
-        out = subprocess.run(["pandadock", "--version"], capture_output=True, text=True, timeout=60)
+        out = subprocess.run(["pandadock", "--version"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=60)
         if out.returncode == 0:
             # PandaDock prints a banner: the version is on the line carrying a
             # "vN.N" token, not on the last line, which is a strapline about

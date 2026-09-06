@@ -205,6 +205,40 @@ def test_no_bundle_file_leaves_its_text_encoding_to_the_locale():
     assert not offenders, "text I/O with no encoding: " + ", ".join(offenders)
 
 
+def test_no_subprocess_decodes_output_with_the_locales_encoding():
+    """The same trap one level out, and it has now bitten twice.
+
+    `text=True` decodes the child's output with the locale's encoding. Inside a
+    pixi task that is ASCII, and boltz prints UTF-8, so a progress bar's box
+    characters raised UnicodeDecodeError and killed the affinity stage after MD
+    had already run. Scanned across the app as well as the bundle: PLIP is a
+    subprocess there and prints whatever it likes.
+    """
+    import ast
+
+    root = Path(__file__).resolve().parents[1]
+    offenders = []
+    for folder in ("bundle_template", "app"):
+        for path in sorted((root / folder).rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                name = getattr(func, "attr", None) or getattr(func, "id", None)
+                if name not in ("run", "Popen", "check_output"):
+                    continue
+                kwargs = {k.arg: k.value for k in node.keywords}
+                text_mode = kwargs.get("text")
+                if not (isinstance(text_mode, ast.Constant) and text_mode.value is True):
+                    continue
+                if "encoding" not in kwargs:
+                    offenders.append(f"{path.name}:{node.lineno}")
+    assert not offenders, ("subprocess in text mode with no encoding: "
+                           + ", ".join(offenders))
+
+
 def test_a_broken_log_never_reaches_the_stage(tmp_path):
     """There is no state a progress display can be in that justifies
     discarding an hour of molecular dynamics."""

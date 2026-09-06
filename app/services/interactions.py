@@ -58,7 +58,8 @@ def run_plip(structure: str | Path, ligand_ccd: Optional[str] = None,
         cmd = [sys.executable, "-m", "plip.plipcmd", "-f", str(structure),
                "-x", "-o", tmp, "--name", "report"]
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            proc = subprocess.run(cmd, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=timeout)
         except FileNotFoundError as exc:
             raise PlipUnavailable("PLIP is not installed on this server.") from exc
         except subprocess.TimeoutExpired:

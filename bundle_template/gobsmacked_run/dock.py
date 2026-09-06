@@ -130,7 +130,8 @@ def run_with_progress(cmd, log, estimate_s: float):
     from .console import bar_for
 
     proc = subprocess.Popen([str(c) for c in cmd], stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, bufsize=1)
+                            stderr=subprocess.STDOUT, text=True, bufsize=1,
+                            encoding="utf-8", errors="replace")
     lines: list[str] = []
 
     def drain():

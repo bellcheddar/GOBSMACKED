@@ -389,7 +389,13 @@ def predict_one(name: str, cif: Path, sequence: str, smiles: str, msa: dict,
     work.mkdir(parents=True, exist_ok=True)
 
     cmd = boltz_command(yaml_path, work, cfg, msa)
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    # encoding named, not inherited. text=True decodes the child's output with
+    # the LOCALE's encoding, which inside a pixi task is ASCII, and boltz prints
+    # UTF-8: a progress bar's box characters raised UnicodeDecodeError and took
+    # the stage down after MD had already run. Same root cause as the log crash,
+    # a different call.
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
     with open(log_path, "a", encoding="utf-8") as fh:
         fh.write(f"$ {' '.join(cmd)}\n{proc.stdout}\n{proc.stderr}\n")
     if proc.returncode != 0:
