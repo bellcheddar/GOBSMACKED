@@ -133,13 +133,7 @@ def collect_poses(results: Path, cfg: dict, log) -> list[tuple[str, Path]]:
             poses.append(("post_md_final", final))
         return poses
 
-    indices = frame_indices(results, cfg)
-    if not indices:
-        if final.exists():
-            poses.append(("post_md_final", final))
-        return poses
-
-    extracted = extract_frames(topology, dcd, indices, results / "affinity" / "frames")
+    extracted = extract_frames(topology, dcd, cfg, results / "affinity" / "frames")
     if not extracted:
         if final.exists():
             poses.append(("post_md_final", final))
@@ -150,7 +144,7 @@ def collect_poses(results: Path, cfg: dict, log) -> list[tuple[str, Path]]:
     return poses
 
 
-def extract_frames(topology: Path, dcd: Path, indices: list[int],
+def extract_frames(topology: Path, dcd: Path, cfg: dict,
                    dest_dir: Path) -> list[tuple[str, Path]]:
     """Write the chosen trajectory frames out as PDB.
 
@@ -167,7 +161,9 @@ def extract_frames(topology: Path, dcd: Path, indices: list[int],
     out: list[tuple[str, Path]] = []
     with hush_c_stdout():
         traj = md.load(str(dcd), top=str(topology))
-        for index in indices:
+        # The trajectory's own frame count, read here rather than from a summary
+        # file that this stage runs before.
+        for index in frame_indices(traj.n_frames, cfg):
             if index >= traj.n_frames:
                 continue
             path = dest_dir / f"post_md_{index:04d}.pdb"
@@ -176,30 +172,29 @@ def extract_frames(topology: Path, dcd: Path, indices: list[int],
     return out
 
 
-def frame_indices(results: Path, cfg: dict) -> list[int]:
+def frame_indices(n_frames: int, cfg: dict) -> list[int]:
     """Evenly spaced frames across the tail of the production run.
+
+    Takes a count rather than a directory, because the count used to come from
+    `traj/summary.json` and that file does not exist yet: summarise runs AFTER
+    this stage. The lookup failed, the cluster silently fell back to the single
+    final frame, and a run that asked for five frames reported one with a spread
+    of zero. Nothing errored; the number was simply less than it claimed.
 
     Evenly spaced rather than clustered by RMSD: the question is whether the
     prediction is steady over the end of the run, and a clustering that picks
     the most distinct frames answers a different one.
     """
-    summary_path = results / "traj" / "summary.json"
-    if not summary_path.exists():
-        return []
-    try:
-        frames = int(json.loads(summary_path.read_text(encoding="utf-8")).get("frames") or 0)
-    except (json.JSONDecodeError, TypeError, ValueError, OSError):
-        return []
-    if frames < 2:
+    if n_frames < 2:
         return []
     wanted = max(1, int(cfg.get("n_frames", DEFAULT_N_FRAMES) or DEFAULT_N_FRAMES))
     window = float(cfg.get("window_fraction", DEFAULT_WINDOW) or DEFAULT_WINDOW)
-    first = max(0, int(frames * (1.0 - window)))
-    span = frames - first
+    first = max(0, int(n_frames * (1.0 - window)))
+    span = n_frames - first
     if span <= wanted:
-        return list(range(first, frames))
+        return list(range(first, n_frames))
     step = span / wanted
-    return sorted({min(frames - 1, int(first + i * step)) for i in range(wanted)})
+    return sorted({min(n_frames - 1, int(first + i * step)) for i in range(wanted)})
 
 
 def to_cif(source: Path, dest: Path) -> Path:

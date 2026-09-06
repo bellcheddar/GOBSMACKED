@@ -54,6 +54,7 @@ a:hover { text-decoration: underline; }
 
 /* --- Brand line ------------------------------------------------------- */
 .brand {
+  position: sticky; top: 0; z-index: 30; background: var(--slate);
   display: flex; justify-content: space-between; align-items: center; gap: 16px;
   padding: 8px 24px; font-size: 12px; color: var(--muted);
   border-bottom: 1px solid var(--line);
@@ -76,8 +77,12 @@ a:hover { text-decoration: underline; }
 .shell-body { flex: 1 1 auto; min-width: 0; }
 
 .rail {
-  position: sticky; top: 0; align-self: flex-start;
-  flex: 0 0 210px; width: 210px; max-height: 100vh; overflow-y: auto;
+  /* Below the brand, like the subnav. Left at 0 it pins to the viewport top and
+     scrolls underneath the bar that is now pinned there. The height budget
+     loses the same 41 px, or the last stage sits off the bottom of the screen. */
+  position: sticky; top: var(--brand-h); align-self: flex-start;
+  flex: 0 0 210px; width: 210px; max-height: calc(100vh - var(--brand-h));
+  overflow-y: auto;
   padding: 18px 0 18px 18px;
 }
 .rail-list { list-style: none; margin: 0; padding: 0; }
@@ -115,7 +120,7 @@ a:hover { text-decoration: underline; }
 }
 
 /* --- Deck ------------------------------------------------------------- */
-:root { --deck-max: 1680px; }
+:root { --deck-max: 1680px; --brand-h: 41px; }
 
 .deck {
   max-width: var(--deck-max); margin: 0 auto; padding: 18px 24px 60px;
@@ -157,6 +162,15 @@ a:hover { text-decoration: underline; }
 
 .scope.tall { min-height: 420px; }
 
+/* The four viewer cards. A grid row already stretches its cards to the tallest
+   of the two, but that equalises within a row and not between rows, so all four
+   carry the same minimum and let the viewer take whatever is left after the
+   heading and the note. Without it the pair holding the longer caption is
+   visibly taller than the pair above. */
+.card.vpanel { display: flex; flex-direction: column; min-height: 540px; }
+.card.vpanel .scope { flex: 1 1 auto; min-height: 300px; }
+.card.vpanel > p:last-child { margin-bottom: 0; }
+
 #motion { display: flex; flex-direction: column; }
 #motion .scope { flex: 1 1 auto; min-height: 320px; }
 #motion .note { margin-bottom: 0; }
@@ -192,7 +206,11 @@ a:hover { text-decoration: underline; }
 
 /* --- Sub-navigation (Analyze) ----------------------------------------- */
 .subnav {
-  position: sticky; top: 0; z-index: 20;
+  /* Beneath the brand line, not over it. --brand-h is measured rather than
+     guessed: the bar's own border sits at y=40 in a render, so it occupies 41
+     pixels, and any other value either overlaps the brand or leaves a stripe of
+     scrolling content between the two. */
+  position: sticky; top: var(--brand-h); z-index: 20;
   display: flex; gap: 18px; padding: 10px 24px;
   background: var(--slate); border-bottom: 1px solid var(--line);
   max-width: var(--deck-max); margin: 0 auto; font-size: 13px;

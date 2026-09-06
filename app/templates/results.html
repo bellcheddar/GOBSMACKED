@@ -25,6 +25,10 @@
 <main class="deck results" id="scorecard">
 
 
+    {# Every pose docking made, in the frame everything else is measured in.
+       Two files rather than ten: the one that went forward, and the ones that
+       did not. Ten colours in one panel is a rainbow nobody can read. #}
+
     <section class="card span-6">
       <h2>Score</h2>
       {# The dial and the molecule, side by side. The empty half of this card was
@@ -126,85 +130,6 @@
       {% endif %}
     </section>
 
-
-    <section class="card span-6" id="motion">
-      <h2>Motion</h2>
-      {% set mv = card.motion or {} %}
-      {% if card.dynamics.frames %}
-      {# Mol* over the trajectory, with its own controls: the flat render this
-         replaced could not be turned, zoomed or paused, which is most of what
-         anyone wants from a trajectory. #}
-      <div class="scope tall" id="motion-scope">
-        <div class="viewer" id="motion-viewer"></div>
-        <div class="hud" id="motion-hud">{{ card.dynamics.frames }} frames</div>
-        <div class="toggles" id="motion-toggles">
-          <button id="motion-play" aria-pressed="false">Play</button>
-        </div>
-      </div>
-      <p class="note">The production run in full: {{ card.dynamics.frames }} frames over
-        {{ card.dynamics.times_ps[-1]|round|int if card.dynamics.times_ps else '?' }} ps.
-        Drag to turn, scroll to zoom, Play to run the trajectory.</p>
-      {% else %}
-      <p class="note">{{ mv.error or 'No trajectory in this archive, so there is nothing to play.' }}</p>
-      {% endif %}
-    </section>
-
-
-    <section class="card span-6" id="complex">
-      <h2>Complex</h2>
-      <div class="scope" id="complex-scope">
-        <div class="viewer" id="complex-viewer"></div>
-        <div class="hud" id="complex-hud">MD-final complex</div>
-        <div class="toggles" id="complex-toggles">
-          <button data-state="pose1" aria-pressed="false">Pose 1</button>
-          <button data-state="minimised" aria-pressed="false">Minimised</button>
-          <button data-state="md_final" aria-pressed="true">MD final</button>
-        </div>
-      </div>
-      <p class="note" id="interaction-legend" style="margin-top:12px"></p>
-    </section>
-
-
-    <section class="card span-6" id="overlay">
-      <h2>Overlay</h2>
-      <div class="scope" id="overlay-scope">
-        <div class="viewer" id="overlay-viewer"></div>
-        <div class="hud" id="overlay-hud">pocket Ca superposition</div>
-        <div class="toggles" id="overlay-toggles">
-          <button class="model" data-state="model" aria-pressed="false">Model</button>
-          <button data-state="md_final" aria-pressed="true">MD final</button>
-          <button class="reference" data-state="reference" aria-pressed="true">Reference</button>
-          {% if card.reference.apo_pdb_id %}
-          <button class="apo" data-state="apo" aria-pressed="false">Apo {{ card.reference.apo_pdb_id }}</button>
-          {% endif %}
-        </div>
-      </div>
-    </section>
-
-
-    {# Every pose docking made, in the frame everything else is measured in.
-       Two files rather than ten: the one that went forward, and the ones that
-       did not. Ten colours in one panel is a rainbow nobody can read. #}
-    <section class="card span-6" id="poses">
-      <h2>Docked poses</h2>
-      {% set dp = card.poses or {} %}
-      {% if dp.rows %}
-      <div class="scope" id="poses-scope">
-        <div class="viewer" id="poses-viewer"></div>
-        <div class="hud" id="poses-hud">{{ dp.count }} poses</div>
-        <div class="toggles" id="poses-toggles">
-          <button data-layer="rest" aria-pressed="true">All poses</button>
-          <button data-layer="protein" aria-pressed="true">Receptor</button>
-          <button data-layer="reference" aria-pressed="true">Crystal</button>
-        </div>
-      </div>
-      <p class="note">{{ dp.verdict }}</p>
-      {% else %}
-      <p class="note">{{ dp.error or 'This archive holds no poses to overlay.' }}</p>
-      {% endif %}
-    </section>
-
-
     <section class="card span-6" id="pose-ranking">
       <h2>Pose ranking</h2>
       {% set dp = card.poses or {} %}
@@ -255,6 +180,76 @@
       {% endif %}
     </section>
 
+    <section class="card span-6 vpanel" id="complex">
+      <h2>Complex</h2>
+      <div class="scope" id="complex-scope">
+        <div class="viewer" id="complex-viewer"></div>
+        <div class="hud" id="complex-hud">MD-final complex</div>
+        <div class="toggles" id="complex-toggles">
+          <button data-state="pose1" aria-pressed="false">Pose 1</button>
+          <button data-state="minimised" aria-pressed="false">Minimised</button>
+          <button data-state="md_final" aria-pressed="true">MD final</button>
+        </div>
+      </div>
+      <p class="note" id="interaction-legend" style="margin-top:12px"></p>
+    </section>
+
+    <section class="card span-6 vpanel" id="overlay">
+      <h2>Overlay</h2>
+      <div class="scope" id="overlay-scope">
+        <div class="viewer" id="overlay-viewer"></div>
+        <div class="hud" id="overlay-hud">pocket Ca superposition</div>
+        <div class="toggles" id="overlay-toggles">
+          <button class="model" data-state="model" aria-pressed="false">Model</button>
+          <button data-state="md_final" aria-pressed="true">MD final</button>
+          <button class="reference" data-state="reference" aria-pressed="true">Reference</button>
+          {% if card.reference.apo_pdb_id %}
+          <button class="apo" data-state="apo" aria-pressed="false">Apo {{ card.reference.apo_pdb_id }}</button>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="card span-6 vpanel" id="motion">
+      <h2>Motion</h2>
+      {% set mv = card.motion or {} %}
+      {% if card.dynamics.frames %}
+      {# Mol* over the trajectory, with its own controls: the flat render this
+         replaced could not be turned, zoomed or paused, which is most of what
+         anyone wants from a trajectory. #}
+      <div class="scope tall" id="motion-scope">
+        <div class="viewer" id="motion-viewer"></div>
+        <div class="hud" id="motion-hud">{{ card.dynamics.frames }} frames</div>
+        <div class="toggles" id="motion-toggles">
+          <button id="motion-play" aria-pressed="false">Play</button>
+        </div>
+      </div>
+      <p class="note">The production run in full: {{ card.dynamics.frames }} frames over
+        {{ card.dynamics.times_ps[-1]|round|int if card.dynamics.times_ps else '?' }} ps.
+        Drag to turn, scroll to zoom, Play to run the trajectory.</p>
+      {% else %}
+      <p class="note">{{ mv.error or 'No trajectory in this archive, so there is nothing to play.' }}</p>
+      {% endif %}
+    </section>
+
+    <section class="card span-6 vpanel" id="poses">
+      <h2>Docked poses</h2>
+      {% set dp = card.poses or {} %}
+      {% if dp.rows %}
+      <div class="scope" id="poses-scope">
+        <div class="viewer" id="poses-viewer"></div>
+        <div class="hud" id="poses-hud">{{ dp.count }} poses</div>
+        <div class="toggles" id="poses-toggles">
+          <button data-layer="rest" aria-pressed="true">All poses</button>
+          <button data-layer="protein" aria-pressed="true">Receptor</button>
+          <button data-layer="reference" aria-pressed="true">Crystal</button>
+        </div>
+      </div>
+      <p class="note">{{ dp.verdict }}</p>
+      {% else %}
+      <p class="note">{{ dp.error or 'This archive holds no poses to overlay.' }}</p>
+      {% endif %}
+    </section>
 
     <section class="card span-6">
       <h2>Run</h2>
@@ -289,6 +284,7 @@
     </section>
 
     {% if card.displacements %}
+
     <section class="card span-6">
       <h2>Most displaced pocket side chains</h2>
       <div class="scroll">
@@ -310,6 +306,7 @@
     {% endif %}
 
     {% if card.interaction_table %}
+
     <section class="card span-6">
       <h2>Interactions</h2>
       <div class="scroll" style="max-height:460px;overflow-y:auto">
@@ -335,7 +332,6 @@
     </section>
     {% endif %}
 
-
     <section class="card span-6">
       <h2>Interaction map</h2>
       {% if card.pandamap and card.pandamap.png %}
@@ -345,7 +341,6 @@
         ({{ card.pandamap.interpretation }}). {{ card.pandamap.note }}</p>
       {% endif %}
     </section>
-
 
     <section class="card span-12" id="mode">
       <h2>Mode: {{ card.modes.family }} switches</h2>
@@ -395,7 +390,6 @@
       </div>
     </section>
 
-
     <section class="card span-12" id="dynamics">
       <h2>Dynamics</h2>
       {% if card.dynamics.frames %}
@@ -409,7 +403,6 @@
       {% endif %}
     </section>
 
-
     <section class="card span-12" id="report">
       <h2>Report</h2>
       <p class="note">A printable page with the scorecard, the mode verdict, the interaction table
@@ -419,7 +412,6 @@
         <a class="btn" href="{{ url_for('runs.download_results', job_id=row['job_id']) }}">Download all</a>
       </div>
     </section>
-
 </main>
 {% endblock %}
 
