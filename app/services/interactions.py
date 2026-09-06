@@ -261,7 +261,12 @@ def _pandamap_layout(plt):
         return None
 
     def wider(*args, **kwargs):
-        kwargs["figsize"] = (16, 12)
+        # Smaller canvas, same point sizes: PandaMap lays the diagram out in
+        # data coordinates, so shrinking the figure does not shrink the drawing,
+        # it makes every label a larger fraction of the image. That is the only
+        # lever on the residue label size, which PandaMap hard-codes in its own
+        # ax.text calls.
+        kwargs["figsize"] = (13, 9.0)
         return original_subplots(*args, **kwargs)
 
     def legend_at_the_side(self, *args, **kwargs):
@@ -278,12 +283,13 @@ def _pandamap_layout(plt):
             if kept and len(kept) < len(handles):
                 kwargs["handles"] = kept
                 args = ()
-        # labelspacing 2.6 rather than the default: it is what makes the column
-        # stand as tall as the diagram beside it instead of a small block
-        # floating against a square of drawing.
+        # Bigger type, tighter rows. Spacing was carrying the column's height
+        # before, which is a waste of the space a larger font could have used:
+        # thirteen entries at 19 point with 1.1 spacing stand as tall as the
+        # diagram and can actually be read.
         kwargs.update(loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=False,
-                      fontsize=15, title_fontsize=17, labelspacing=2.6,
-                      handletextpad=1.0, borderaxespad=0.0)
+                      fontsize=19, title_fontsize=21, labelspacing=1.1,
+                      handletextpad=0.9, borderaxespad=0.0)
         return original_legend(self, *args, **kwargs)
 
     plt.title, plt.subplots, Axes.legend = no_title, wider, legend_at_the_side
