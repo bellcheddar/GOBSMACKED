@@ -287,3 +287,177 @@ def _poster(frame: np.ndarray, dest: Path) -> None:
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(frame).save(dest, format="WEBP", quality=82, method=5)
+
+
+# ---------------------------------------------------------------------------
+# The ligand on its own, beside the score
+# ---------------------------------------------------------------------------
+
+LIGAND_W, LIGAND_H = 560, 460
+# CPK, brightened for a dark panel. Carbon is the one that matters: true CPK
+# carbon is near-black, which on this ground is a hole rather than a molecule.
+ELEMENT_COLOURS = {
+    "C": "#c9d4e3", "N": "#5b8dff", "O": "#ff6b6b", "S": "#ffd45e",
+    "P": "#ff9f5e", "F": "#8ce99a", "CL": "#7ee2a8", "BR": "#c98b6b",
+    "I": "#c39cff", "H": "#e8edf5",
+}
+DEFAULT_ELEMENT = "#b9a5ff"
+ATOM_RADIUS = {"C": 0.34, "N": 0.34, "O": 0.33, "S": 0.42, "P": 0.42, "H": 0.20}
+
+
+def render_ligand(topology: str | Path, trajectory: str | Path, mp4: str | Path,
+                  poster: str | Path, ligand_resname: Optional[str] = None,
+                  turns: float = 1.0) -> dict[str, Any]:
+    """The docked molecule alone, in element colours, turning as it flexes.
+
+    A different job from `render`, which shows a ligand inside a fold and is
+    therefore drawn as a trace. Here there is no protein and 29 heavy atoms to
+    fill the frame, so it is drawn as it would be in any chemistry package:
+    sticks split at the bond midpoint so each half takes its own atom's colour,
+    spheres at the atoms, everything depth-sorted back to front and outlined,
+    which is what separates two bonds crossing in projection.
+
+    Every frame is superposed on the ligand itself, so the molecule sits still
+    and what moves is its own conformation. The slow turn is what makes it read
+    as three-dimensional; without it a flexing molecule looks like a flat
+    scribble twitching.
+    """
+    topology, trajectory = Path(topology), Path(trajectory)
+    mp4, poster = Path(mp4), Path(poster)
+    if not trajectory.exists() or not topology.exists():
+        return {"error": "No trajectory in the archive, so there is nothing to play."}
+    if shutil.which("ffmpeg") is None:
+        return {"error": "ffmpeg is not installed on this server, so the clip was not encoded."}
+
+    import mdtraj as md
+
+    traj = md.load(str(trajectory), top=md.load_topology(str(topology)))
+    if traj.n_atoms * traj.n_frames > BUDGET_ATOM_FRAMES:
+        return {"error": "That trajectory is past this server's budget, so it was not rendered."}
+
+    top = traj.topology
+    ligand = _trajectory_ligand(top, ligand_resname)
+    if ligand.size < 2:
+        return {"error": "No ligand found in the trajectory."}
+
+    # On the ligand, not the protein: the molecule should sit still and flex,
+    # not wander out of a frame that holds nothing else to give it a place.
+    traj.superpose(traj, frame=0, atom_indices=ligand)
+    xyz = traj.xyz[:, ligand, :] * 10.0
+    symbols = [top.atom(int(i)).element.symbol.upper() for i in ligand]
+    bonds = _bonds_within(xyz[0], symbols)
+    frames = _draw_ligand(xyz, symbols, bonds, turns)
+    _encode(frames, mp4)
+    _poster(frames[0], poster)
+    return {"mp4": mp4.name, "poster": poster.name, "frames": int(traj.n_frames),
+            "atoms": int(len(symbols)), "bonds": len(bonds),
+            "seconds": round(len(frames) * 2 / FPS, 1)}
+
+
+def _bonds_within(frame, symbols) -> list[tuple[int, int]]:
+    """Bonds by distance, with hydrogens allowed a shorter reach."""
+    positions = np.asarray(frame)
+    distances = np.linalg.norm(positions[:, None, :] - positions[None, :, :], axis=-1)
+    bonds = []
+    for i in range(len(symbols)):
+        for j in range(i + 1, len(symbols)):
+            limit = 1.28 if "H" in (symbols[i], symbols[j]) else 1.95
+            if 0.4 < distances[i, j] <= limit:
+                bonds.append((i, j))
+    return bonds
+
+
+def _draw_ligand(xyz, symbols, bonds, turns: float) -> list[np.ndarray]:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
+
+    centred = xyz - xyz.reshape(-1, 3).mean(axis=0)
+    # 1.08, not 1.25: the molecule is the whole subject here, and a quarter of
+    # the panel spent on margin makes it look like a thumbnail of something
+    # else. The turn needs a little room, hence not 1.0.
+    reach = float(np.abs(centred).max()) * 1.08
+
+    fig = plt.figure(figsize=(LIGAND_W / DPI, LIGAND_H / DPI), dpi=DPI, facecolor=BACKGROUND)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_facecolor(BACKGROUND)
+    ax.set_xlim(-reach * LIGAND_W / LIGAND_H, reach * LIGAND_W / LIGAND_H)
+    ax.set_ylim(-reach, reach)
+    ax.set_aspect("equal")
+    ax.set_axis_off()
+
+    out: list[np.ndarray] = []
+    n = centred.shape[0]
+    for f in range(n):
+        angle = 2 * np.pi * turns * f / max(1, n - 1)
+        cos, sin = np.cos(angle), np.sin(angle)
+        spin = np.array([[cos, 0.0, sin], [0.0, 1.0, 0.0], [-sin, 0.0, cos]])
+        frame = centred[f] @ spin.T
+
+        for artist in list(ax.collections):
+            artist.remove()
+
+        # Painter's algorithm over BOTH sticks and atoms together, which is what
+        # makes a bond pass behind an atom rather than through it. Sorting the
+        # two separately is the usual way this is got wrong.
+        pieces = []
+        for i, j in bonds:
+            mid = (frame[i] + frame[j]) / 2
+            pieces.append((min(frame[i][2], mid[2]), "bond", frame[i][:2], mid[:2], symbols[i]))
+            pieces.append((min(frame[j][2], mid[2]), "bond", frame[j][:2], mid[:2], symbols[j]))
+        for i in range(len(symbols)):
+            if symbols[i] == "H":
+                continue
+            pieces.append((frame[i][2], "atom", frame[i][:2], None, symbols[i]))
+        pieces.sort(key=lambda piece: piece[0])
+
+        outline_segments, outline_widths = [], []
+        segments, colours, widths = [], [], []
+        for depth, kind, a, b, symbol in pieces:
+            # Nearer is fatter: a cheap perspective that reads as depth without
+            # a projection matrix.
+            scale = 1.0 + 0.28 * (depth / max(reach, 1e-6))
+            if kind == "bond":
+                outline_segments.append([a, b])
+                outline_widths.append(9.5 * scale)
+                segments.append([a, b])
+                colours.append(ELEMENT_COLOURS.get(symbol, DEFAULT_ELEMENT))
+                widths.append(6.0 * scale)
+            else:
+                radius = ATOM_RADIUS.get(symbol, 0.36) * scale
+                ax.add_collection(_sphere(a, radius,
+                                          ELEMENT_COLOURS.get(symbol, DEFAULT_ELEMENT)))
+        ax.add_collection(LineCollection(outline_segments, colors=BACKGROUND,
+                                         linewidths=outline_widths, capstyle="round",
+                                         zorder=1))
+        ax.add_collection(LineCollection(segments, colors=colours, linewidths=widths,
+                                         capstyle="round", zorder=2))
+
+        fig.canvas.draw()
+        out.append(np.asarray(fig.canvas.buffer_rgba())[:, :, :3].copy())
+    plt.close(fig)
+    return out
+
+
+def _sphere(centre, radius: float, colour: str):
+    """An atom, as a few nested circles: a cheap shaded ball.
+
+    Matplotlib has no shading, so the highlight is drawn rather than lit: three
+    discs of decreasing radius, offset up and left and lightened, which at this
+    size is indistinguishable from a rendered sphere and costs nothing.
+    """
+    from matplotlib.collections import PatchCollection
+    from matplotlib.colors import to_rgb
+    from matplotlib.patches import Circle
+
+    base = np.array(to_rgb(colour))
+    patches, colours = [], []
+    for step, (shrink, lift, blend) in enumerate(((1.0, 0.0, -0.35), (0.72, 0.22, 0.0),
+                                                  (0.40, 0.34, 0.45))):
+        tint = base * (1 + blend) if blend > 0 else base * (1 + blend)
+        tint = np.clip(tint + (blend if blend > 0 else 0) * (1 - base) * 0.6, 0, 1)
+        offset = np.array([-radius * lift * 0.5, radius * lift])
+        patches.append(Circle(np.asarray(centre) + offset, radius * shrink))
+        colours.append(tint)
+    return PatchCollection(patches, facecolors=colours, edgecolors="none", zorder=3)

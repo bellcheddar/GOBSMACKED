@@ -396,11 +396,19 @@
     }
   };
 
-  function create(hostId) {
+  function create(hostId, options) {
+    options = options || {};
     var host = typeof hostId === "string" ? document.getElementById(hostId) : hostId;
     if (!host) return Promise.reject(new Error("no viewer element"));
     if (!hasWebGL()) return Promise.reject(new Error("this browser has no WebGL"));
-    return molstar.Viewer.create(host, OPTIONS).then(function (viewer) {
+    // Mol*'s own controls, for the one panel that plays a trajectory: a
+    // trajectory without a play button is a still picture that took longer to
+    // load.
+    var settings = Object.assign({}, OPTIONS, options.controls
+      ? { layoutIsExpanded: false, layoutShowControls: true, layoutShowLog: false,
+          layoutShowLeftPanel: false, layoutShowSequence: false }
+      : {});
+    return molstar.Viewer.create(host, settings).then(function (viewer) {
       // Mol* paints its own light background over the scope's grid. Transparent
       // lets the panel show through, which is what makes these read as
       // instruments rather than as embedded viewers.

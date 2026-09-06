@@ -27,19 +27,37 @@
 
     <section class="card span-6">
       <h2>Score</h2>
-      {% if sc.score is not none %}
-      <div class="dial">
-        <svg viewBox="0 0 200 120" role="img" aria-label="GOBSMACK score {{ sc.score }}">
-          <path d="M20 110 A80 80 0 0 1 180 110" fill="none" stroke="var(--line)" stroke-width="14" stroke-linecap="round"/>
-          <path d="{{ dial_arc(sc.score) }}" fill="none" stroke="var(--grade-{{ sc.grade|lower }})" stroke-width="14" stroke-linecap="round"/>
-          <text x="100" y="105" text-anchor="middle" fill="var(--text)" font-size="44" font-weight="800">{{ sc.grade }}</text>
-        </svg>
-        <div class="val">{{ sc.score }}</div>
-        <div class="lab">{{ sc.label }}</div>
+      {# The dial and the molecule, side by side. The empty half of this card was
+         the obvious place for the clip and it took three asks to put it there. #}
+      <div class="score-row">
+        <div class="score-dial">
+          {% if sc.score is not none %}
+          <div class="dial">
+            <svg viewBox="0 0 200 120" role="img" aria-label="GOBSMACK score {{ sc.score }}">
+              <path d="M20 110 A80 80 0 0 1 180 110" fill="none" stroke="var(--line)" stroke-width="14" stroke-linecap="round"/>
+              <path d="{{ dial_arc(sc.score) }}" fill="none" stroke="var(--grade-{{ sc.grade|lower }})" stroke-width="14" stroke-linecap="round"/>
+              <text x="100" y="105" text-anchor="middle" fill="var(--text)" font-size="44" font-weight="800">{{ sc.grade }}</text>
+            </svg>
+            <div class="val">{{ sc.score }}</div>
+            <div class="lab">{{ sc.label }}</div>
+          </div>
+          {% else %}
+          <div class="verdict unverified">Unverified<span>{{ sc.label }}</span></div>
+          {% endif %}
+        </div>
+        {% set lm = card.ligand_motion or {} %}
+        {% if lm.mp4 %}
+        <div class="score-clip">
+          <video class="clip" muted loop playsinline preload="none"
+                 poster="{{ url_for('runs.run_file', job_id=row['job_id'], name=lm.poster) }}"
+                 data-src="{{ url_for('runs.run_file', job_id=row['job_id'], name=lm.mp4) }}"
+                 aria-label="{{ row['ligand_name'] or 'The ligand' }} through the molecular
+                             dynamics run, drawn as element-coloured sticks and turning"></video>
+          <p class="note">{{ row['ligand_name'] or 'The ligand' }} through the run:
+            {{ lm.atoms }} heavy atoms, flexing in place and turning once.</p>
+        </div>
+        {% endif %}
       </div>
-      {% else %}
-      <div class="verdict unverified">Unverified<span>{{ sc.label }}</span></div>
-      {% endif %}
 
       <div class="gauges">
         {% for m in sc.metrics %}
@@ -112,22 +130,20 @@
     <section class="card span-6" id="motion">
       <h2>Motion</h2>
       {% set mv = card.motion or {} %}
-      {% if mv.mp4 %}
-      {# No <source> and no src: clip.js attaches the file after window.load, so a
-         500 kB video never competes with Mol* and Plotly for bandwidth during
-         first paint, and a visitor who has asked for reduced motion never
-         downloads it at all. The poster is the first frame, so with JavaScript
-         off the panel still shows the complex it would have animated. #}
-      <video class="clip" muted loop playsinline preload="none"
-             poster="{{ url_for('runs.run_file', job_id=row['job_id'], name=mv.poster) }}"
-             data-src="{{ url_for('runs.run_file', job_id=row['job_id'], name=mv.mp4) }}"
-             aria-label="The molecular dynamics run played back: the docked ligand moving inside
-                         the pocket, drawn as a C-alpha trace with the ligand in cyan"></video>
-      <p class="note">{{ mv.frames }} frames of the production run, {{ mv.seconds }} s, played
-        forwards then backwards: a trajectory does not loop, so a straight cut back to frame one
-        would read as a glitch rather than as data. The pose is cyan, the
-        {{ mv.pocket_residues }} residues lining its site are picked out in white, and every frame
-        is superposed on the protein so the ligand is the thing seen to move.</p>
+      {% if card.dynamics.frames %}
+      {# Mol* over the trajectory, with its own controls: the flat render this
+         replaced could not be turned, zoomed or paused, which is most of what
+         anyone wants from a trajectory. #}
+      <div class="scope tall" id="motion-scope">
+        <div class="viewer" id="motion-viewer"></div>
+        <div class="hud" id="motion-hud">{{ card.dynamics.frames }} frames</div>
+        <div class="toggles" id="motion-toggles">
+          <button id="motion-play" aria-pressed="false">Play</button>
+        </div>
+      </div>
+      <p class="note">The production run in full: {{ card.dynamics.frames }} frames over
+        {{ card.dynamics.times_ps[-1]|round|int if card.dynamics.times_ps else '?' }} ps.
+        Drag to turn, scroll to zoom, Play to run the trajectory.</p>
       {% else %}
       <p class="note">{{ mv.error or 'No trajectory in this archive, so there is nothing to play.' }}</p>
       {% endif %}

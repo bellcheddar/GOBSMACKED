@@ -368,8 +368,19 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
                 times_ps=(results.summary or {}).get("times_ps"))
         except Exception as exc:                       # noqa: BLE001 - decorative, never fatal
             card["motion"] = {"error": f"The clip could not be rendered: {exc}"}
+        # And the ligand on its own, in element colours, for beside the score.
+        # A different rendering rather than a crop of the same one: at this size
+        # the fold is a smudge and the molecule is the subject.
+        try:
+            card["ligand_motion"] = movie_svc.render_ligand(
+                results.root / "traj" / "topology.pdb", results.root / "traj" / "traj.dcd",
+                results.root / "ligand.mp4", results.root / "ligand_poster.webp",
+                ligand_resname=ligand_names.get("md_final"))
+        except Exception as exc:                   # noqa: BLE001 - decorative, never fatal
+            card["ligand_motion"] = {"error": f"The ligand clip could not be rendered: {exc}"}
     else:
         card["motion"] = {"error": "No trajectory in the archive, so there is nothing to play."}
+        card["ligand_motion"] = {"error": "No trajectory in the archive."}
 
     # --- every pose, not just the one that went forward -------------------
     # The archive has always carried all of them and the page has always shown

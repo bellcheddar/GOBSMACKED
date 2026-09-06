@@ -129,6 +129,81 @@
      not". */
   var posesScope = null;
 
+  /* The trajectory itself, in Mol*, with controls.
+
+     loadTrajectory rather than loadStructureFromData: the viewer build exports
+     it, and it takes a topology and a coordinates file, which is exactly what
+     the archive carries. Mol*'s own UI is left on for this one panel, because
+     playing a trajectory needs a play button and the site's chrome has none. */
+  var motionScope = null;
+
+  function startMotion() {
+    var host = document.getElementById("motion-viewer");
+    if (!host || !(card.dynamics || {}).frames) return;
+    GobViewer.create(host).then(function (scope) {
+      return scope.viewer.loadTrajectory({
+        model: { kind: "model-url", url: fileUrl("traj/topology.pdb"), format: "pdb" },
+        coordinates: { kind: "coordinates-url", url: fileUrl("traj/traj.dcd"),
+                       format: "dcd", isBinary: true },
+        preset: "default",
+      }).then(function () {
+        // loadTrajectory goes round Scope.load, so nothing themed it, nothing
+        // registered it and the camera never moved: the run rendered in Mol*'s
+        // default green, half out of frame. Adopt the entry by hand.
+        var all = scope.plugin.managers.structure.hierarchy.current.structures;
+        var entry = all[all.length - 1];
+        if (!entry) return scope;
+        scope.entries.motion = entry;
+        scope.primary = entry;
+        return scope.theme(entry, GobViewer.COLOURS.md_final).then(function () {
+          // After the canvas has its final size, not before: this card stretches
+          // to its row, so a reset fired on load frames a canvas that is about
+          // to change height and leaves the protein sitting on the bottom edge.
+          settle(function () {
+            try {
+              scope.viewer.plugin.handleResize();
+              scope.plugin.managers.camera.reset();
+            } catch (err) { /* keep whatever view there is */ }
+          });
+          return scope;
+        });
+      });
+    }).then(function (scope) {
+      motionScope = scope;
+      document.getElementById("motion-hud").textContent =
+        card.dynamics.frames + " frames \u00b7 drag to turn, scroll to zoom";
+      // Mol*'s own model-index animation, driven from our button rather than
+      // from its control panel: the panel is most of a half-width card and
+      // nearly all of it is tools this page has no use for.
+      var play = document.getElementById("motion-play");
+      if (!play) return;
+      play.addEventListener("click", function () {
+        var manager = scope.plugin.managers.animation;
+        var playing = play.getAttribute("aria-pressed") === "true";
+        try {
+          if (playing) {
+            manager.stop();
+          } else {
+            var animation = (manager.animations || []).filter(function (a) {
+              return a.name === "built-in.animate-model-index";
+            })[0];
+            if (!animation) throw new Error("no model-index animation in this build");
+            manager.play(animation, { mode: { name: "loop", params: { direction: "forward" } },
+                                      maxFPS: 15 });
+          }
+          play.setAttribute("aria-pressed", playing ? "false" : "true");
+          play.textContent = playing ? "Play" : "Pause";
+        } catch (err) {
+          document.getElementById("motion-hud").textContent =
+            "playback unavailable: " + err.message;
+        }
+      });
+    }).catch(function (err) {
+      document.getElementById("motion-hud").textContent =
+        "the trajectory could not be loaded: " + err.message;
+    });
+  }
+
   function startPoses() {
     var host = document.getElementById("poses-viewer");
     var dp = card.poses || {};
@@ -277,6 +352,7 @@
     try { card = JSON.parse(node.textContent); } catch (err) { return; }
     GobPlots.all(card.dynamics);
     startComplex();
+  startMotion();
   startPoses();
     startOverlay();
     ownerControls();

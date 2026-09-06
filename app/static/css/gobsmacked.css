@@ -146,11 +146,19 @@ a:hover { text-decoration: underline; }
    picture inside it stays 4:3. The letterboxing that leaves is invisible:
    the video is rendered on --panel, the same colour the card is painted, so
    the protein simply sits centred in the panel with the caption beneath. */
+/* The dial and the ligand clip, 50:50. Below 760px they stack, because two
+   half-width columns of a card that is itself half the deck is too little for
+   either. */
+.score-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: center; }
+.score-row .score-clip video { width: 100%; display: block; border-radius: 4px;
+                               background: var(--panel); }
+.score-row .score-clip .note { margin: 6px 0 0; }
+@media (max-width: 760px) { .score-row { grid-template-columns: 1fr; } }
+
+.scope.tall { min-height: 420px; }
+
 #motion { display: flex; flex-direction: column; }
-#motion video.clip {
-  width: 100%; flex: 1 1 auto; min-height: 240px;
-  object-fit: contain; border-radius: 4px; background: var(--panel);
-}
+#motion .scope { flex: 1 1 auto; min-height: 320px; }
 #motion .note { margin-bottom: 0; }
 
 /* Mode runs the full width, which would otherwise leave one narrow column of
@@ -337,24 +345,24 @@ input.example:focus, textarea.example:focus { color: var(--text); font-style: no
 /* The pose table. Dense on purpose: seven numbers a row and ten rows, so the
    figures are tabular and the only colour marks the two rows worth finding. */
 table.poses { width: 100%; border-collapse: collapse; margin: 4px 0 10px; font-size: 12px; }
-table.poses th { text-align: right; font-weight: 600; color: var(--muted);
+table.poses th { text-align: left; font-weight: 600; color: var(--muted);
                  padding: 4px 5px; border-bottom: 1px solid var(--line); }
-table.poses th:first-child { text-align: left; }
-table.poses td { text-align: right; padding: 4px 5px; font-variant-numeric: tabular-nums;
+
+table.poses td { text-align: left; padding: 4px 5px; font-variant-numeric: tabular-nums;
                  border-bottom: 1px solid var(--panel-2); }
-table.poses td:first-child { text-align: left; color: var(--muted); }
+table.poses td:first-child { color: var(--muted); }
 table.poses tr.chosen td { color: var(--phos); }      /* the pose that went to MD */
 table.poses tr.nearest td { color: var(--amber); }    /* the pose nearest the crystal */
 table.poses td.good { color: var(--green); }
 table.poses td.bad { color: var(--red); }
 
 table.affinity { width: 100%; border-collapse: collapse; margin: 6px 0 10px; }
-table.affinity th { text-align: right; font-size: 11px; font-weight: 600;
+table.affinity th { text-align: left; font-size: 11px; font-weight: 600;
                     color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); }
-table.affinity th:first-child { text-align: left; }
-table.affinity td { text-align: right; padding: 5px 6px; font-variant-numeric: tabular-nums;
+
+table.affinity td { text-align: left; padding: 5px 6px; font-variant-numeric: tabular-nums;
                     color: var(--ice); border-bottom: 1px solid var(--panel-2); }
-table.affinity td:first-child { text-align: left; color: var(--text); }
+table.affinity td:first-child { color: var(--text); }
 table.affinity .sd { color: var(--ice-dim); font-size: 11px; }
 table.affinity td.up { color: var(--green); }
 table.affinity td.down { color: var(--amber); }
@@ -378,7 +386,11 @@ th {
 td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--panel-2); }
-td.num { text-align: right; }
+/* Left, like the headers above them. These were right-aligned while every
+   `th` was left, so no column lined up with its own heading: the eye had to
+   travel to the wrong end of the cell to find the number's name.
+   tabular-nums keeps the digits in vertical register without the alignment. */
+td.num, th.num { text-align: left; font-variant-numeric: tabular-nums; }
 .tick { color: var(--green); }
 .cross { color: var(--red); }
 .scroll { overflow-x: auto; }
