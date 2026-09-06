@@ -84,6 +84,13 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
         tail = captured.strip().splitlines()[-3:]
         raise RuntimeError("PandaDock failed: " + " / ".join(tail))
 
+    # `-o` means different things to different PandaDock commands: a directory
+    # for `dock` and `hybrid`, and an output PREFIX for `pandadock-flex`, which
+    # appends "_results" to it. So a flex run asked to write into work/docking
+    # writes into work/docking_results instead, and every flex run failed after
+    # completing, with 45 minutes of finished work sitting in a directory one
+    # name away from the one being checked.
+    out_dir = actual_output_dir(out_dir, mode)
     poses_dir = results / "poses"
     poses_dir.mkdir(parents=True, exist_ok=True)
     poses = out_dir / "poses.sdf"
@@ -101,6 +108,21 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     return {"warnings": warnings, "mode": mode, "poses": len(scores),
             "best_score": best,
             "headline": f"{len(scores)} poses, best {best} kcal/mol" if scores else "no poses"}
+
+
+def actual_output_dir(out_dir: Path, mode: str) -> Path:
+    """Where the chosen command really wrote, which is not always where it was told.
+
+    `pandadock-flex` takes `-o` as an output PREFIX and appends "_results"; the
+    other two take it as a directory. Checked rather than assumed: the sibling
+    is only used when it exists and the requested directory has no poses.
+    """
+    if mode != "flex":
+        return out_dir
+    sibling = out_dir.with_name(out_dir.name + "_results")
+    if not (out_dir / "poses.sdf").exists() and (sibling / "poses.sdf").exists():
+        return sibling
+    return out_dir
 
 
 def estimate_seconds(docking: dict) -> float:
@@ -154,9 +176,21 @@ def build_command(mode: str, receptor: Path, ligand: Path, centre, box, docking:
     common = ["-r", receptor, "-l", ligand, "-o", out_dir,
               "--center", centre[0], centre[1], centre[2]]
     if mode == "flex":
-        # pandadock-flex takes a radius, not a box: half the largest side is the
-        # sphere that contains the campaign's box.
-        radius = round(max(box) / 2.0, 1)
+        # pandadock-flex takes a radius, not a box, and this used to pass half
+        # the LARGEST box side: 15.9 A for a campaign whose box is 31.7 A on its
+        # long axis. The tool's own default is 12 A, so induced fit was being
+        # handed 2.3 times the search volume it expects, and the radius also
+        # sets how much receptor gets refined in phase 2. Half the smallest side
+        # is the honest reading of "how far the site extends from its centre",
+        # and the 8 A floor keeps a drug-sized ligand inside the sphere:
+        # erlotinib is 15.7 A end to end, so its own bounding sphere is 7.9 A.
+        #
+        # Not passed: --cpu-workers. It is accepted, put in a config dict and
+        # assigned to self.cpu_workers in three constructors, then read nowhere
+        # at all; core.py sets it to None and never touches it again. The run
+        # stays on one core whatever it is set to, measured at 100% of a single
+        # core for over an hour. Passing it would only suggest otherwise.
+        radius = round(max(8.0, min(box) / 2.0), 1)
         return ["pandadock-flex", *common, "--radius", radius,
                 "--initial-poses-to-retain", min(int(docking.get("num_poses", 10)), 5)]
     cmd = ["pandadock", "hybrid" if mode == "hybrid" else "dock", *common,

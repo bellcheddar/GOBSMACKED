@@ -136,3 +136,24 @@ def test_pandadocks_own_sdf_tag_names_are_read(tmp_path):
     rows = dock.scores_from_sdf(path)
     assert rows[0]["score"] == -6.819
     assert rows[0]["gnn_affinity"] == 4.993
+
+
+def test_flex_output_is_looked_for_where_flex_writes_it(tmp_path):
+    """`-o` is a directory for dock and hybrid and an output PREFIX for
+    pandadock-flex, which appends "_results". A flex run told to write into
+    work/docking writes into work/docking_results, so every flex run failed
+    after finishing: 45 minutes of completed work in a directory one name away
+    from the one being checked."""
+    asked = tmp_path / "docking"
+    asked.mkdir()
+    real = tmp_path / "docking_results"
+    real.mkdir()
+    (real / "poses.sdf").write_text("", encoding="utf-8")
+
+    assert dock.actual_output_dir(asked, "flex") == real
+    # dock and hybrid are unaffected, even with a sibling sitting there.
+    assert dock.actual_output_dir(asked, "dock") == asked
+    assert dock.actual_output_dir(asked, "hybrid") == asked
+    # And when flex did write where it was asked, that is what is used.
+    (asked / "poses.sdf").write_text("", encoding="utf-8")
+    assert dock.actual_output_dir(asked, "flex") == asked
