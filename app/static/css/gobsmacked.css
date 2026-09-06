@@ -534,10 +534,22 @@ pre.cmd {
 }
 
 @media (max-width: 1250px) {
+  .stages { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* 900, not 1250. At 1250 a perfectly ordinary laptop window collapsed the whole
+   deck to one column, so the paired panels this page is built around -- Complex
+   beside Overlay, Motion beside Docked poses -- stacked, and the pairing was
+   invisible to anyone not running a wide display. Measured: at a 1300 px
+   viewport each span-6 card is 512 px of a 1042 px deck; at 1200 px every card
+   was 942 px, the full width.
+   Below 900 the rail is already full-width and horizontal, so the deck has the
+   window to itself and two columns are about 420 px each, which is the point
+   where a structure viewer stops being worth showing side by side. */
+@media (max-width: 900px) {
   .deck, .deck.wide { grid-template-columns: minmax(0, 1fr); }
   .deck.results, .deck.flow { grid-template-columns: minmax(0, 1fr); }
   .span-4, .span-6, .span-8, .span-12 { grid-column: 1 / -1; }
-  .stages { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
