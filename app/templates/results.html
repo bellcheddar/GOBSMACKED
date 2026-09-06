@@ -335,10 +335,26 @@
     <section class="card span-12">
       <h2>Interaction map</h2>
       {% if card.pandamap and card.pandamap.png %}
-      <img src="{{ url_for('runs.run_file', job_id=row['job_id'], name=card.pandamap.png) }}"
-           alt="2D interaction map of the relaxed complex" class="map">
-      <p class="note">PandaMap's empirical estimate: {{ card.pandamap.dg }} kcal/mol
-        ({{ card.pandamap.interpretation }}). {{ card.pandamap.note }}</p>
+      {% set pm = card.pandamap %}
+      {# The wrapper carries the picture's own aspect ratio so the hotspots,
+         which are fractions of the image, land on the image and not on
+         letterboxing. That is also why the img fills the wrapper exactly
+         rather than being fitted into a box of a different shape. #}
+      <div class="map-wrap"{% if pm.size %}
+           style="aspect-ratio: {{ pm.size[0] }} / {{ pm.size[1] }};
+                  max-width: {{ (820 * pm.size[0] / pm.size[1])|round|int }}px"{% endif %}>
+        <img src="{{ url_for('runs.run_file', job_id=row['job_id'], name=pm.png) }}"
+             alt="2D interaction map of the relaxed complex" class="map">
+        {% for spot in pm.hotspots or [] %}
+        <span class="map-hot" title="{{ spot.help }}"
+              style="left:{{ (spot.x * 100)|round(3) }}%; top:{{ (spot.y * 100)|round(3) }}%;
+                     width:{{ (spot.w * 100)|round(3) }}%; height:{{ (spot.h * 100)|round(3) }}%"
+              ></span>
+        {% endfor %}
+      </div>
+      <p class="note">PandaMap's empirical estimate: {{ pm.dg }} kcal/mol
+        ({{ pm.interpretation }}). {{ pm.note }}
+        {% if pm.hotspots %}Hover any residue or legend entry for what it means.{% endif %}</p>
       {% endif %}
     </section>
 

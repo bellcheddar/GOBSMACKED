@@ -151,6 +151,17 @@ a:hover { text-decoration: underline; }
    unaffected, since width:100% still bounds them. */
 .card img.map { width: 100%; max-height: 820px; object-fit: contain; border-radius: 4px; }
 
+/* The tooltip overlay. Invisible until hovered, because a map covered in boxes
+   is worse than one that quietly answers when asked; the faint tint on hover is
+   what tells a reader the rest of the labels will answer too. */
+.map-wrap { position: relative; width: 100%; margin: 0 auto; }
+.map-wrap img.map { width: 100%; height: 100%; max-height: none; display: block; }
+.map-hot {
+  position: absolute; cursor: help; border-radius: 3px;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+.map-hot:hover { background: rgba(93, 225, 230, 0.16); box-shadow: 0 0 0 1px var(--phos); }
+
 /* The motion clip. It is rendered on the same slate the panels sit on, so no
    border or background is needed: the protein simply appears in the card. */
 /* The clip grows into whatever height the score beside it sets, and the

@@ -212,7 +212,7 @@ def pandamap(structure: str | Path, out_png: str | Path,
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with plt.rc_context(DARK_STYLE), _pandamap_layout(plt):
+        with plt.rc_context(DARK_STYLE), _pandamap_layout(plt) as captured:
             mapper = HybridProtLigMapper(str(structure), ligand_resname=ligand_ccd)
             # DSSP is an external binary the droplet does not carry; PandaMap's
             # own solvent-accessibility fallback is used instead.
@@ -222,13 +222,110 @@ def pandamap(structure: str | Path, out_png: str | Path,
         return {"error": f"PandaMap could not read {Path(structure).name}: {exc}"}
 
     remapped = _darken_light_greys(out_png)
+    from PIL import Image
+
+    try:
+        with Image.open(out_png) as image:
+            size = list(image.size)
+    except Exception:                            # noqa: BLE001 - the map still stands
+        size = None
     return {
         "png": out_png.name,
         "themed": remapped,
+        "size": size,
+        "hotspots": captured.get("spots") or [],
         "dg": _as_float((affinity or {}).get("dG_estimated")) if isinstance(affinity, dict) else None,
         "interpretation": (affinity or {}).get("interpretation", "") if isinstance(affinity, dict) else "",
         "note": (affinity or {}).get("note", "") if isinstance(affinity, dict) else "",
     }
+
+
+# What each thing on the map means, for the tooltips. Keyed on the labels
+# PandaMap writes, so a label it stops writing simply loses its tooltip rather
+# than showing the wrong one.
+INTERACTION_HELP = {
+    "Hydrogen Bond": "A hydrogen bond: donor and acceptor within about 3.5 A and roughly "
+                     "in line. The interaction most likely to be conserved between a "
+                     "prediction and the crystal.",
+    "Carbon-Pi": "A C-H group pointing into the face of an aromatic ring. Weak "
+                 "individually, common in kinase pockets.",
+    "Donor-Pi": "A hydrogen-bond donor pointing into an aromatic face rather than at a "
+                "lone pair.",
+    "Amide-Pi": "A backbone or side-chain amide stacked against an aromatic ring.",
+    "Hydrophobic": "Non-polar contact: two carbon-rich surfaces close enough to exclude "
+                   "water. Most of the buried surface of a drug-sized ligand.",
+    "Ionic": "A salt bridge: full charges of opposite sign within about 4 A.",
+    "Alkyl-Pi": "An aliphatic side chain packed against an aromatic ring face.",
+    "Attractive Charge": "Charged groups of opposite sign close enough to attract without "
+                         "meeting the geometry for a salt bridge.",
+    "Pi-Cation": "A positive charge, usually a lysine or arginine, over an aromatic face.",
+    "Unidirectional interaction": "The arrow points from donor to acceptor.",
+    "Bidirectional interaction": "Both partners donate and accept.",
+    "Solvent accessible": "The shaded halo marks residues still exposed to water rather "
+                          "than buried against the ligand.",
+}
+AMINO_ACIDS = {
+    "ALA": "alanine", "ARG": "arginine", "ASN": "asparagine", "ASP": "aspartate",
+    "CYS": "cysteine", "GLN": "glutamine", "GLU": "glutamate", "GLY": "glycine",
+    "HIS": "histidine", "ILE": "isoleucine", "LEU": "leucine", "LYS": "lysine",
+    "MET": "methionine", "PHE": "phenylalanine", "PRO": "proline", "SER": "serine",
+    "THR": "threonine", "TRP": "tryptophan", "TYR": "tyrosine", "VAL": "valine",
+}
+
+
+def _tooltip_for(label: str) -> Optional[str]:
+    """The sentence a label deserves, or nothing if it explains itself."""
+    text = label.strip()
+    if text in INTERACTION_HELP:
+        return f"{text}. {INTERACTION_HELP[text]}"
+    parts = text.replace("\n", " ").split()
+    if len(parts) == 2 and parts[0].upper() in AMINO_ACIDS and parts[1].isdigit():
+        name = AMINO_ACIDS[parts[0].upper()]
+        return (f"{parts[0].title()}{parts[1]}: {name} lining the site, numbered as the "
+                f"crystal numbers it.")
+    return None
+
+
+def _hotspots(fig, dpi: float, pad: float = 0.1) -> list[dict]:
+    """Where every label ended up, as fractions of the image that gets saved.
+
+    Fractions rather than pixels because the page scales the picture to the
+    panel, and the overlay has to scale with it. Everything is computed in
+    inches: a Text artist's window extent is in display units at the FIGURE's
+    dpi, which is not the dpi savefig is about to use, and mixing the two puts
+    every hotspot in the wrong place by the ratio between them.
+    """
+    renderer = fig.canvas.get_renderer()
+    tight = fig.get_tightbbox(renderer)          # inches
+    left, bottom = tight.x0 - pad, tight.y0 - pad
+    width, height = tight.width + 2 * pad, tight.height + 2 * pad
+    if width <= 0 or height <= 0:
+        return []
+
+    spots = []
+    for text in fig.findobj(match=lambda a: a.__class__.__name__ == "Text"):
+        label = (text.get_text() or "").strip()
+        if not label:
+            continue
+        help_text = _tooltip_for(label)
+        if not help_text:
+            continue
+        try:
+            box = text.get_window_extent(renderer)
+        except Exception:                        # noqa: BLE001 - an artist with no extent
+            continue
+        x0, x1 = box.x0 / fig.dpi, box.x1 / fig.dpi
+        y0, y1 = box.y0 / fig.dpi, box.y1 / fig.dpi
+        spots.append({
+            "label": label,
+            "help": help_text,
+            # Top-down for CSS, bottom-up in matplotlib.
+            "x": round((x0 - left) / width, 5),
+            "y": round(1 - (y1 - bottom) / height, 5),
+            "w": round((x1 - x0) / width, 5),
+            "h": round((y1 - y0) / height, 5),
+        })
+    return spots
 
 
 @contextlib.contextmanager
@@ -256,6 +353,8 @@ def _pandamap_layout(plt):
     from matplotlib.axes import Axes
 
     original_legend = Axes.legend
+    original_savefig = plt.savefig
+    captured: dict = {"spots": [], "size": None}
 
     def no_title(*args, **kwargs):
         return None
@@ -292,11 +391,24 @@ def _pandamap_layout(plt):
                       handletextpad=0.9, borderaxespad=0.0)
         return original_legend(self, *args, **kwargs)
 
-    plt.title, plt.subplots, Axes.legend = no_title, wider, legend_at_the_side
+    def savefig_and_measure(*args, **kwargs):
+        # The last moment the figure exists: visualize() saves and immediately
+        # closes it, so anything the overlay needs has to be read here.
+        try:
+            figure = plt.gcf()
+            figure.canvas.draw()
+            captured["spots"] = _hotspots(figure, kwargs.get("dpi") or figure.dpi)
+        except Exception:                        # noqa: BLE001 - tooltips are not the map
+            captured["spots"] = []
+        return original_savefig(*args, **kwargs)
+
+    plt.title, plt.subplots = no_title, wider
+    Axes.legend, plt.savefig = legend_at_the_side, savefig_and_measure
     try:
-        yield
+        yield captured
     finally:
-        plt.title, plt.subplots, Axes.legend = original_title, original_subplots, original_legend
+        plt.title, plt.subplots = original_title, original_subplots
+        Axes.legend, plt.savefig = original_legend, original_savefig
 
 
 def _darken_light_greys(path: Path) -> bool:

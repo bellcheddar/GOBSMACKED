@@ -199,3 +199,19 @@ def test_every_field_ingest_reads_survives_into_the_analysis(tmp_path):
     # A copied list, so appending a warning to one does not touch the other.
     moved.warnings.append("later")
     assert peek.warnings == ["w"]
+
+
+def test_map_tooltips_are_placed_on_the_picture_not_beside_it():
+    """Hotspots are fractions of the saved image, so the arithmetic that turns a
+    matplotlib window extent into one has to survive the tight bounding box and
+    the padding savefig adds. Getting it wrong puts every label in roughly the
+    right place, which is the hardest kind of wrong to notice."""
+    from app.services import interactions
+
+    assert interactions._tooltip_for("Hydrogen Bond").startswith("Hydrogen Bond.")
+    assert "leucine" in interactions._tooltip_for("LEU 718")
+    assert interactions._tooltip_for("Leu 718") == interactions._tooltip_for("LEU 718")
+    # Anything that explains itself gets no tooltip rather than a wrong one.
+    assert interactions._tooltip_for("Interacting structural groups") is None
+    assert interactions._tooltip_for("") is None
+    assert interactions._tooltip_for("ZZZ 718") is None
