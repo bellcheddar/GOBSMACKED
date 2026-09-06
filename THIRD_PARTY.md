@@ -34,6 +34,8 @@ not this one.
 | PandaDock | Pose search and SE(3) GNN rescoring | MIT | [github.com/pritampanda15/PandaDock](https://github.com/pritampanda15/PandaDock) | [Panda 2026, bioRxiv](https://doi.org/10.64898/2026.08.19.745667) |
 | OpenMM | Minimisation, equilibration and production MD | MIT | [github.com/openmm/openmm](https://github.com/openmm/openmm) | [Eastman et al. 2024, Journal of Physical Chemistry B (OpenMM 8)](https://doi.org/10.1021/acs.jpcb.3c06662) |
 | openmmforcefields / OpenFF | Ligand parameters (OpenFF 2.1.0) alongside Amber14 | MIT | [github.com/openforcefield/openff-toolkit](https://github.com/openforcefield/openff-toolkit) | [Boothroyd et al. 2023, Journal of Chemical Theory and Computation](https://doi.org/10.1021/acs.jctc.3c00039) |
+| Boltz-2 | Affinity head scored on the relaxed complex, its diffusion module bypassed | MIT | [github.com/jwohlwend/boltz](https://github.com/jwohlwend/boltz) | [Passaro et al. 2025, bioRxiv](https://doi.org/10.1101/2025.06.14.659707) |
+| Boltzina | The pattern followed, not a dependency: an external pose scored by Boltz-2's affinity head with the structure module omitted | MIT | [github.com/ohuelab/Boltzina](https://github.com/ohuelab/Boltzina) | [Furui and Ohue 2025, arXiv](https://doi.org/10.48550/arXiv.2508.17555) |
 | MDTraj | Trajectory analysis, in the bundle and on the server | LGPL-2.1 | [github.com/mdtraj/mdtraj](https://github.com/mdtraj/mdtraj) | [McGibbon et al. 2015, Biophysical Journal](https://doi.org/10.1016/j.bpj.2015.08.015) |
 
 ## Analyze
