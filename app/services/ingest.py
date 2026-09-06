@@ -49,6 +49,10 @@ class Results:
     manifest: dict = field(default_factory=dict)
     campaign: dict = field(default_factory=dict)
     summary: dict = field(default_factory=dict)
+    # Absent from every archive built before stage 5 existed, and from every run
+    # that declined it. An empty dict, never a required file: a missing affinity
+    # is a missing panel, not an invalid archive.
+    affinity: dict = field(default_factory=dict)
     present: list[str] = field(default_factory=list)
     missing_optional: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -121,6 +125,7 @@ def extract(archive: Path, dest: Path) -> Results:
     res = Results(root=dest, present=sorted(p for p in members))
     res.manifest = _read_json(dest / "manifest.json", "manifest.json")
     res.summary = _read_json(dest / "traj" / "summary.json", "traj/summary.json")
+    res.affinity = _read_json_optional(dest / "affinity" / "affinity.json")
     try:
         res.campaign = yaml.safe_load((dest / "campaign.yaml").read_text()) or {}
     except yaml.YAMLError as exc:
@@ -161,6 +166,20 @@ def campaign_matches(res: Results, campaign_yaml: str) -> bool:
     stored = hashlib.sha256((campaign_yaml or "").encode("utf-8")).hexdigest()
     claimed = res.manifest.get("campaign_sha256", "")
     return bool(claimed) and claimed == stored
+
+
+def _read_json_optional(path: Path) -> dict:
+    """A block that may not be there, and whose absence is not an error.
+
+    `_read_json` raises on a missing file, which is right for the manifest and
+    wrong for anything a run may legitimately not have produced. Using it for
+    the affinity block would reject every archive built before stage 5 existed.
+    """
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    return obj if isinstance(obj, dict) else {}
 
 
 def _read_json(path: Path, label: str) -> dict:

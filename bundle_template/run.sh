@@ -92,6 +92,30 @@ pixi install --locked \
   || die "the environment could not be installed. Check the network and try again."
 ok "environment ready"
 
+# The affinity stage shells into its own environment, which pixi would otherwise
+# install the moment that stage runs: a multi-gigabyte download landing an hour
+# into a job, with a progress bar for molecular dynamics on screen. Installed
+# here instead, where a long download is what the reader is already waiting for.
+# Read from inside the affinity block rather than by grepping the whole file:
+# `include:` is unique in campaign.yaml today, and a bare grep would silently
+# start matching the day it is not.
+WANTS_AFFINITY=$(awk '
+  /^affinity:/ { inblock = 1; next }
+  /^[a-z_]+:/  { inblock = 0 }
+  inblock && /include:[[:space:]]*true/ { print "yes"; exit }
+' campaign.yaml 2>/dev/null || true)
+if [ "${WANTS_AFFINITY:-}" = "yes" ]; then
+  if [ ! -d ".pixi/envs/affinity" ]; then
+    step "fetching the affinity environment (Boltz-2 and torch), about 3 GB, once"
+  fi
+  if ! pixi install --locked -e affinity; then
+    warn "the affinity environment could not be installed."
+    warn "the run continues; the affinity stage will record why it was skipped."
+  else
+    ok "affinity environment ready"
+  fi
+fi
+
 # ---------------------------------------------------------------------------
 #  Run
 # ---------------------------------------------------------------------------

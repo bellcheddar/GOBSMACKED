@@ -22,6 +22,7 @@ from flask import (Blueprint, abort, jsonify, render_template, request,
                    url_for)
 
 from .. import config, db
+from ..services import affinity as affinity_svc
 from ..services import annotate as annotate_svc
 from ..services import dynamics as dyn_svc
 from ..services import fetch as fetch_svc
@@ -360,6 +361,12 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
             card["motion"] = {"error": f"The clip could not be rendered: {exc}"}
     else:
         card["motion"] = {"error": "No trajectory in the archive, so there is nothing to play."}
+
+    # --- affinity --------------------------------------------------------
+    # Read, not computed: all of it happened on the machine with the GPU. Never
+    # folded into the composite, and absent for every archive built before the
+    # stage existed, which is not an error.
+    card["affinity"] = affinity_svc.summarise(results.affinity)
 
     # --- scorecard -------------------------------------------------------
     ligand_rmsd = _best(final.get("ligand_rmsd"), first.get("ligand_rmsd"))

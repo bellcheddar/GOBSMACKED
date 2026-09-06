@@ -330,6 +330,21 @@ input.example:focus, textarea.example:focus { color: var(--text); font-style: no
 .example-banner button { flex: 0 0 auto; }
 .example-banner.gone { display: none; }
 
+/* The affinity table. --ice throughout, so it cannot be read as one of the
+   graded metrics above it; the change column is the only coloured part,
+   because the direction of "better" differs per row and the arrow is the
+   thing worth finding at a glance. */
+table.affinity { width: 100%; border-collapse: collapse; margin: 6px 0 10px; }
+table.affinity th { text-align: right; font-size: 11px; font-weight: 600;
+                    color: var(--muted); padding: 4px 6px; border-bottom: 1px solid var(--line); }
+table.affinity th:first-child { text-align: left; }
+table.affinity td { text-align: right; padding: 5px 6px; font-variant-numeric: tabular-nums;
+                    color: var(--ice); border-bottom: 1px solid var(--panel-2); }
+table.affinity td:first-child { text-align: left; color: var(--text); }
+table.affinity .sd { color: var(--ice-dim); font-size: 11px; }
+table.affinity td.up { color: var(--green); }
+table.affinity td.down { color: var(--amber); }
+
 /* A checkbox that sits on the label's baseline rather than above it, so a
    ticked option reads as one line of text and not as a control with a caption. */
 label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px; }

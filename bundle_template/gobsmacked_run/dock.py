@@ -6,9 +6,17 @@ PandaDock is run as a subprocess, in the mode the campaign asked for:
     dock    empirical search and scoring only, no GNN model needed
     flex    induced fit, refining receptor side chains around each pose
 
-The GNN checkpoint is about 82 MB and is downloaded on first use, so `hybrid`
-falls back to `dock` when there is no network and no cached model rather than
-failing the whole run four stages in.
+The GNN checkpoint is about 82 MB and is fetched on first use into a cache
+shared by every bundle on the machine, so `hybrid` falls back to `dock` only
+when it genuinely cannot be had, rather than failing the whole run four stages
+in.
+
+It is fetched from the GitHub release directly rather than through `pandadock
+gnn download-model`, which asks for release v4.0.0. That release carries no
+assets at all; the checkpoint is published under v4.1.1. The command therefore
+prints "Model not found at release URL" and exits 0, which read here as a
+network failure and put every hybrid run onto the empirical scorer with a
+warning blaming the user's connection.
 """
 
 from __future__ import annotations
@@ -21,7 +29,19 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-MODEL_NAME = "pandadock_gnn.pt"
+# The asset's real name in the release. The old value here was
+# "pandadock_gnn.pt", which is not a file that exists anywhere, so even a
+# correctly downloaded checkpoint would not have been found in the cache.
+MODEL_NAME = "pandadock_gnn_v4.pt"
+RELEASES_API = "https://api.github.com/repos/pritampanda15/PandaDock/releases"
+# Where the newest release carrying the asset was, when this was written. Used
+# only when the API cannot be reached or answers with nothing usable.
+FALLBACK_URL = ("https://github.com/pritampanda15/PandaDock/releases/download/"
+                "v4.1.1/pandadock_gnn_v4.pt")
+# Shared across bundles: the same 82 MB should not be fetched again for every
+# campaign on one machine, and a bundle directory is a temporary thing.
+MODEL_CACHE = Path.home() / ".gobsmacked" / "models"
+MIN_MODEL_BYTES = 10_000_000
 
 
 def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
@@ -45,12 +65,18 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
         model = ensure_gnn_model(work, log)
         if model is None:
             mode = "dock"
-            warnings.append("No PandaDock GNN checkpoint and no network to fetch one: the poses "
-                            "were searched and ranked by the empirical function alone.")
+            warnings.append("The PandaDock GNN checkpoint could not be fetched, so the poses "
+                            "were searched and ranked by the empirical function alone. The run "
+                            "is sound; the ranking is the weaker of the two.")
 
     cmd = build_command(mode, receptor, ligand, centre, box, docking, out_dir, model)
-    log(f"dock: {mode} mode, {docking.get('n_poses', 10)} poses, "
-        f"exhaustiveness {docking.get('exhaustiveness', 16)}")
+    # num_poses, not n_poses: the campaign's key. Reading the wrong one printed
+    # the default of 10 on a run whose command said -n 3, which is the kind of
+    # log line that gets believed over the command beside it.
+    poses = int(docking.get("num_poses", 10) or 10)
+    log(f"dock: {mode} mode, {poses} poses"
+        + (", GNN rescoring" if mode == "hybrid"
+           else f", exhaustiveness {docking.get('exhaustiveness', 16)}"))
     log("dock: " + " ".join(str(c) for c in cmd))
     captured, returncode = run_with_progress(cmd, log, estimate_seconds(docking))
     (work / "pandadock.log").write_text(captured, encoding="utf-8")
@@ -134,37 +160,106 @@ def build_command(mode: str, receptor: Path, ligand: Path, centre, box, docking:
                 "--initial-poses-to-retain", min(int(docking.get("num_poses", 10)), 5)]
     cmd = ["pandadock", "hybrid" if mode == "hybrid" else "dock", *common,
            "--box", box[0], box[1], box[2],
-           "-n", int(docking.get("num_poses", 10)),
-           # A fixed seed: two runs of the same campaign should return the same
-           # poses, or the scorecard is measuring the sampler's variance.
-           "--seed", 20260905]
+           "-n", int(docking.get("num_poses", 10))]
+    if mode == "hybrid":
+        # `pandadock hybrid` accepts neither --seed nor -e: it exits with "No
+        # such option" before doing any work. Both were being passed to it, so
+        # hybrid could never have run even once the checkpoint was found, and
+        # the checkpoint bug was hiding the flag bug behind it.
+        #
+        # The cost is real and worth stating: hybrid runs are therefore not
+        # seeded, so two runs of one campaign can return different poses and any
+        # difference between them is the sampler's variance rather than a
+        # finding. `dock` remains reproducible.
+        if model is not None:
+            cmd += ["-m", model]
+        return cmd
+    # A fixed seed: two runs of the same campaign should return the same poses,
+    # or the scorecard is measuring the sampler's variance.
+    cmd += ["--seed", 20260905]
     exhaustiveness = docking.get("exhaustiveness")
     if exhaustiveness:
         cmd += ["-e", int(exhaustiveness)]
-    if mode == "hybrid" and model is not None:
-        cmd += ["-m", model]
     return cmd
 
 
 def ensure_gnn_model(work: Path, log) -> Optional[Path]:
-    """The GNN checkpoint, downloading it once if it is not already here."""
-    for candidate in (work / "models" / MODEL_NAME,
+    """The GNN checkpoint, fetched once into a cache shared by every bundle.
+
+    `pandadock gnn download-model` is not used. It requests release v4.0.0,
+    which publishes no assets, prints "Model not found at release URL" and
+    exits 0, so its failure is invisible to a return-code check. The asset is
+    published under v4.1.1, so the release list is asked which release actually
+    carries it and the newest one wins.
+    """
+    for candidate in (MODEL_CACHE / MODEL_NAME,
+                      work / "models" / MODEL_NAME,
                       Path.home() / ".pandadock" / MODEL_NAME,
                       Path("models") / MODEL_NAME):
-        if candidate.exists():
+        if candidate.exists() and candidate.stat().st_size > MIN_MODEL_BYTES:
             return candidate
-    log("dock: fetching the PandaDock GNN checkpoint (about 82 MB, once)")
+
+    url = newest_model_url(log) or FALLBACK_URL
+    MODEL_CACHE.mkdir(parents=True, exist_ok=True)
+    dest = MODEL_CACHE / MODEL_NAME
+    # Downloaded beside the destination and moved into place only when whole, so
+    # an interrupted fetch cannot leave a truncated checkpoint that every later
+    # run then finds in the cache and loads.
+    partial = dest.with_suffix(".part")
     try:
-        proc = subprocess.run(["pandadock", "gnn", "download-model"],
-                              capture_output=True, text=True, timeout=1800)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
+        download(url, partial, log)
+    except Exception as exc:                       # noqa: BLE001 - the fallback is the point
+        partial.unlink(missing_ok=True)
+        log(f"dock: the GNN checkpoint could not be fetched: {exc}")
         return None
-    if proc.returncode != 0:
+    # Size read before the unlink, not after: stat() on a file this line has
+    # just deleted raises FileNotFoundError, which would turn the graceful
+    # fallback to the empirical scorer into a dead run three stages in.
+    size = partial.stat().st_size
+    if size < MIN_MODEL_BYTES:
+        partial.unlink(missing_ok=True)
+        log(f"dock: the download was only {size} bytes, which is not a model")
         return None
-    for candidate in (Path("models") / MODEL_NAME, Path.home() / ".pandadock" / MODEL_NAME):
-        if candidate.exists():
-            return candidate
+    partial.replace(dest)
+    return dest
+
+
+def newest_model_url(log) -> Optional[str]:
+    """Ask the release list which release actually carries the checkpoint."""
+    import json as _json
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(RELEASES_API, timeout=30) as response:
+            releases = _json.loads(response.read().decode("utf-8"))
+    except Exception:                              # noqa: BLE001 - offline is normal here
+        return None
+    for release in releases if isinstance(releases, list) else []:
+        for asset in release.get("assets") or []:
+            if asset.get("name") == MODEL_NAME and asset.get("browser_download_url"):
+                return asset["browser_download_url"]
     return None
+
+
+def download(url: str, dest: Path, log) -> None:
+    """Fetch with a progress bar, because 82 MB on a slow line looks like a hang."""
+    import urllib.request
+
+    from .console import bar_for
+
+    with urllib.request.urlopen(url, timeout=120) as response:
+        total = int(response.headers.get("Content-Length") or 0)
+        with bar_for(log, "fetching the PandaDock GNN checkpoint",
+                     total=total or None) as bar:
+            done = 0
+            with open(dest, "wb") as fh:
+                while True:
+                    chunk = response.read(1 << 20)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    done += len(chunk)
+                    bar.update(done, note=f"{done / 1e6:.0f} MB")
 
 
 def write_scores(out_dir: Path, dest: Path, log) -> list[dict]:
@@ -197,12 +292,45 @@ def write_scores(out_dir: Path, dest: Path, log) -> list[dict]:
             break
 
     if not rows:
+        rows = scores_from_hybrid_csv(out_dir / "hybrid_results.csv")
+    if not rows:
         rows = scores_from_sdf(out_dir / "poses.sdf")
 
     with open(dest, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=["pose_id", "score", "gnn_affinity", "rank"])
         writer.writeheader()
         writer.writerows(rows)
+    return rows
+
+
+def scores_from_hybrid_csv(path: Path) -> list[dict]:
+    """`pandadock hybrid` writes hybrid_results.csv and no JSON at all.
+
+    Its columns are its own: rank, gnn_pec50, gnn_energy, vina_energy,
+    activity_prob. Nothing that reads `dock`'s output finds anything here, which
+    is how a hybrid run came back with three poses and an empty score column,
+    reported on the card as "best None kcal/mol".
+
+    `score` is the GNN energy rather than Vina's, because in hybrid mode the GNN
+    is what did the ranking and the score column should be the number the ranking
+    was made on.
+    """
+    if not path.exists():
+        return []
+    rows = []
+    try:
+        with open(path, newline="", encoding="utf-8") as fh:
+            for index, record in enumerate(csv.DictReader(fh), start=1):
+                rows.append({
+                    "pose_id": record.get("pose_id") or f"pose{index}",
+                    "score": _number(record.get("gnn_energy") or record.get("vina_energy")),
+                    "gnn_affinity": _number(record.get("gnn_pec50")),
+                    # int, not the float _number returns: this is a position in
+                    # a list and it is written straight into the CSV.
+                    "rank": int(_number(record.get("rank")) or index),
+                })
+    except (OSError, csv.Error):
+        return []
     return rows
 
 
@@ -218,8 +346,13 @@ def scores_from_sdf(path: Path) -> list[dict]:
         props = mol.GetPropsAsDict()
         rows.append({
             "pose_id": props.get("pose_id", mol.GetProp("_Name") if mol.HasProp("_Name") else f"pose{index}"),
-            "score": _number(props.get("score", props.get("Score", props.get("energy")))),
-            "gnn_affinity": _number(props.get("gnn_score", props.get("predicted_affinity"))),
+            # PandaDock's own tag names, both modes: score_kcal_per_mol and
+            # energy_gnn_pec50 are what it actually writes, and neither was
+            # being read.
+            "score": _number(props.get("score", props.get("Score", props.get(
+                "score_kcal_per_mol", props.get("energy_gnn_energy", props.get("energy")))))),
+            "gnn_affinity": _number(props.get("gnn_score", props.get(
+                "energy_gnn_pec50", props.get("predicted_affinity")))),
             "rank": props.get("rank", index),
         })
     return rows

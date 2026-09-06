@@ -40,17 +40,61 @@ pyyaml = "*"
 pip = "*"
 
 [pypi-dependencies]
-# Docking. The default install is the empirical search alone, which is about
-# 200 MB. The SE(3) GNN rescoring model wants PyTorch and PyTorch Geometric,
-# roughly three gigabytes more, so it is an opt-in environment rather than a
-# tax on every run: `run.py` already falls back from hybrid to dock when the
-# checkpoint is unavailable, and says so in the warnings.
 pandadock = ">=4.1"
+# PandaDock's GNN rescorer, which `docking.mode: hybrid` needs and which the
+# campaign asks for by default. This was left out on the belief that it meant
+# three gigabytes and a torch-scatter build with no macOS arm64 wheel. Neither
+# holds: pandadock already pulls torch itself, so torch is in this environment
+# either way, and pandadock imports only torch_geometric, which is a pure
+# Python wheel that installs on both platforms with nothing to compile.
+# torch-scatter is a dependency of PandaDock's own [gnn] extra, not of the code
+# path the rescorer actually takes.
+#
+# Verified by running `pandadock hybrid` to completion with the checkpoint on
+# osx-arm64: GNN pEC50 and GNN energy for every pose, on MPS.
+torch-geometric = ">=2.4"
 
 # Folding, needed only when the bundle carries no model_apo.pdb. Most bundles
 # do carry one, because the server found an AlphaFold or PDB structure first.
 [feature.fold.pypi-dependencies]
 fair-esm = ">=2.0"
+
+# --- Stage 5, affinity ------------------------------------------------------
+# Boltz-2's affinity head, scored on a pose this pipeline already has, with the
+# structure module bypassed: the Boltzina pattern. It is a standalone
+# environment and the stage shells into it, never imports it, for the same
+# reason PLIP is a subprocess: the dependency sets cannot share a solve. Boltz
+# pins numpy<2.0 and gemmi 0.6.5; OpenMM, openff-toolkit and openmmforcefields
+# in the default environment want numpy 2 and a current gemmi. Merged, they do
+# not produce a slow environment, they produce no lock file at all.
+#
+# Every pin below matches boltz's own pip metadata. Leaving one open lets
+# conda-forge pick a newer build and the solve fails as an unsatisfiable
+# conda/PyPI conflict, because both land in one environment. The three
+# sdist-only packages are declared explicitly because pip resolution alone
+# leaves them out of a packed environment, and all three are unconditional
+# imports of boltz.main: without them the CLI crashes on every invocation.
+# All of this is BoltzMaker's, learned there and not re-learned here.
+#
+# fairscale, which boltz also pins and which is also sdist-only, is deliberately
+# absent: conda-forge's build requires conda's own pytorch>=2.1,<2.2, which
+# conflicts with the pip torch boltz installs, and two torches in one
+# environment is worse than a slow first install.
+[feature.affinity.dependencies]
+python = "3.11.*"
+pip = "*"
+gemmi = "0.6.5.*"
+biopython = "1.84.*"
+scipy = "1.13.*"
+requests = "2.32.3.*"
+pyyaml = "6.0.2.*"
+ihm = "2.11.*"
+modelcif = "1.2.*"
+antlr4-python3-runtime = "4.9.3.*"
+rdkit = "*"
+
+[feature.affinity.pypi-dependencies]
+boltz = ">=2.2"
 
 [environments]
 # pixi run gobsmacked           dock and MD, the smallest install
@@ -60,22 +104,23 @@ fair-esm = ">=2.0"
 # environment against a single locked set, so the default environment inherits
 # whatever the others need.
 #
-# There is no `gnn` environment here even though `docking.mode: hybrid` uses
-# one, and that is a deliberate omission rather than an oversight. PandaDock's
-# [gnn] extra pins torch-scatter, which publishes no wheel for macOS arm64 on
-# Python 3.11 and needs torch importable while its own metadata is being built.
-# pixi solves EVERY declared environment before it writes the lock file, so
-# declaring one that cannot be solved here means no lock file at all and no
-# environment of any kind: the failure is total, not partial. Add it yourself on
-# a machine where it resolves:
+# There is still no `gnn` environment, and now there is no need for one: the
+# rescorer's real requirement, torch_geometric, is in the default environment
+# above. What must NOT go in is `pandadock[gnn]`, whose extra pins torch-scatter:
+# that publishes no wheel for macOS arm64 on Python 3.11 and needs torch
+# importable while its own metadata is being built. pixi solves EVERY declared
+# environment before it writes the lock file, so declaring one that cannot be
+# solved means no lock file at all and no environment of any kind. The failure
+# is total, not partial.
 #
-#   pixi add --pypi torch torch-geometric
-#   pixi add --pypi "pandadock[gnn]"
-#
-# Without it, `run.py` falls back from hybrid to the empirical scorer and says
-# so in the archive's warnings, which is a working run rather than a failed one.
+# `run.py` still falls back from hybrid to the empirical scorer when the
+# checkpoint cannot be fetched, and says so in the archive's warnings, which is
+# a working run rather than a failed one.
 default = { features = [] }
 fold = { features = ["fold"] }
+# no-default-feature is load-bearing, not tidiness: without it this environment
+# inherits [dependencies] -- OpenMM, openff-toolkit, numpy 2 -- and cannot solve.
+affinity = { features = ["affinity"], no-default-feature = true }
 
 [tasks]
 gobsmacked = "python run.py"

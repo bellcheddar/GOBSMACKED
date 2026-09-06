@@ -66,6 +66,42 @@
       {% endif %}
       {% endif %}
 
+      {# Affinity: reported, never scored. Inside the Score card and below the
+         graded metrics, in --ice, because every metric above has a crystal to
+         be right or wrong about and this one has none. #}
+      {% set aff = card.affinity or {} %}
+      {% if aff.state == 'ran' %}
+      <h3>Predicted affinity</h3>
+      <table class="affinity">
+        <thead>
+          <tr><th></th><th>Docked pose</th>
+              <th>After MD{% if aff.n_post_frames > 1 %}, {{ aff.n_post_frames }} frames{% endif %}</th>
+              <th>Change</th></tr>
+        </thead>
+        <tbody>
+          {% for r in aff.rows %}
+          <tr>
+            <td>{{ r.label }}</td>
+            <td>{{ '%.2f'|format(r.before) if r.before is not none else '&mdash;'|safe }}</td>
+            <td>{% if r.after is not none %}{{ '%.2f'|format(r.after) }}{% if r.sd %}
+                <span class="sd">± {{ '%.2f'|format(r.sd) }}</span>{% endif %}
+                {% else %}&mdash;{% endif %}</td>
+            <td class="{{ 'up' if r.better else ('down' if r.better is false else '') }}">
+              {% if r.delta is not none %}{{ '%+.2f'|format(r.delta) }}{% else %}&mdash;{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="note">{{ aff.verdict }}</p>
+      <p class="note">{{ aff.unit }}. Boltz-2's affinity head, scored on a pose this pipeline
+        already had rather than one it diffused. It is not a free energy, it is not comparable
+        across targets, and it is not evidence that the pose is correct: nothing here is weighed
+        against a crystal, so none of it enters the score above.</p>
+      {% elif aff.state %}
+      <h3>Predicted affinity</h3>
+      <p class="note">{{ aff.note }}</p>
+      {% endif %}
+
       {% if sc.unmeasured %}
       <p class="note">Not measured, and left out of the weighted mean:
         {{ sc.unmeasured|join(', ') }}.</p>

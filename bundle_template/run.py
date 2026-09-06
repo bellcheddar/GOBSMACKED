@@ -28,13 +28,14 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from gobsmacked_run import console as console_mod  # noqa: E402
-from gobsmacked_run import dock, fold, md, noise, prep, schema, summarise  # noqa: E402
+from gobsmacked_run import affinity, dock, fold, md, noise, prep, schema, summarise  # noqa: E402
 
 STAGES = {
     "fold": fold.run,
     "prep": prep.run,
     "dock": dock.run,
     "md": md.run,
+    "affinity": affinity.run,
     "summarise": summarise.run,
 }
 
@@ -45,6 +46,7 @@ BLURB = {
     "prep": "trim, protonate at the campaign pH, and build the ligand conformer",
     "dock": "PandaDock inside the campaign's box",
     "md": "solvate, minimise, equilibrate and run",
+    "affinity": "score the docked and the relaxed pose with Boltz-2",
     "summarise": "turn the trajectory into numbers and pack the archive",
 }
 
@@ -82,6 +84,15 @@ def estimate_seconds(name: str, campaign: dict, skip_fold: bool) -> float:
         nanoseconds = (float(md_cfg.get("equilibration_ps", 100))
                        + float(md_cfg.get("production_ps", 1000))) / 1000.0
         return MD_SETUP_SECONDS + nanoseconds * MD_SECONDS_PER_NS
+    if name == "affinity":
+        if not (campaign.get("affinity") or {}).get("include", True):
+            return 0.0
+        # The MSA dominates a target that has not been seen before and is free
+        # on one that has; the trunk is one pass per pose and the head is cheap.
+        cfg = campaign.get("affinity") or {}
+        poses = 2 if (cfg.get("frames") or "cluster") == "single" else \
+            int(cfg.get("n_frames", 5) or 5) + 1
+        return 240.0 + 30.0 * poses
     if name == "summarise":
         interval = max(1.0, float(md_cfg.get("frame_interval_ps", 10)))
         frames = float(md_cfg.get("production_ps", 1000)) / interval
