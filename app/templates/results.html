@@ -29,7 +29,7 @@
        Two files rather than ten: the one that went forward, and the ones that
        did not. Ten colours in one panel is a rainbow nobody can read. #}
 
-    <section class="card span-6">
+    <section class="card span-12">
       <h2>Score</h2>
       {# The dial and the molecule, side by side. The empty half of this card was
          the obvious place for the clip and it took three asks to put it there. #}
@@ -130,56 +130,6 @@
       {% endif %}
     </section>
 
-    <section class="card span-6" id="pose-ranking">
-      <h2>Pose ranking</h2>
-      {% set dp = card.poses or {} %}
-      {% if dp.rows %}
-      <table class="poses">
-        <thead>
-          {# Centre and Shape earn their columns: RMSD alone cannot say whether a
-             pose is in the wrong pocket, the wrong way round, or the wrong
-             shape, and those have different fixes. #}
-          <tr><th>#</th><th>Score</th><th>Vina</th><th>pEC50</th>
-              <th>RMSD</th><th>Centre</th><th>Shape</th><th>Contact</th></tr>
-        </thead>
-        <tbody>
-          {% for r in dp.rows %}
-          <tr class="{{ 'chosen' if loop.first }}{{ ' nearest' if dp.best_by_rmsd and r.rank == dp.best_by_rmsd.rank and not loop.first }}">
-            <td>{{ r.rank }}</td>
-            <td>{{ '%.2f'|format(r.score) if r.score is not none else '&mdash;'|safe }}</td>
-            <td>{{ '%.2f'|format(r.vina_energy) if r.vina_energy is not none else '&mdash;'|safe }}</td>
-            <td>{{ '%.2f'|format(r.gnn_pec50) if r.gnn_pec50 is not none else '&mdash;'|safe }}</td>
-            <td class="{{ 'good' if r.rmsd is not none and r.rmsd <= 2 else '' }}">
-              {{ '%.2f'|format(r.rmsd) if r.rmsd is not none else '&mdash;'|safe }}</td>
-            <td class="{{ 'good' if r.centroid_distance is not none and r.centroid_distance <= 4 else '' }}">
-              {{ '%.2f'|format(r.centroid_distance) if r.centroid_distance is not none else '&mdash;'|safe }}</td>
-            <td>{{ '%.2f'|format(r.shape_rmsd) if r.shape_rmsd is not none else '&mdash;'|safe }}</td>
-            <td class="{{ 'bad' if r.closest_contact is not none and r.closest_contact < 2.2 else '' }}">
-              {{ '%.2f'|format(r.closest_contact) if r.closest_contact is not none else '&mdash;'|safe }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <p class="note">Score and Vina in kcal/mol; RMSD, Centre, Shape and Contact in A.
-        <b>RMSD</b> is to the crystal ligand where it lies. <b>Centre</b> is the distance
-        between the two centroids: it says whether the pose is in the right pocket at all.
-        <b>Shape</b> is the RMSD after superposing the two ligands freely, which throws the
-        placement away and asks only whether the molecule is folded the same. A low Centre
-        and a low Shape beside a high RMSD is a ligand in the right site, turned the wrong
-        way round. <b>Contact</b> is the closest heavy-atom approach to the receptor;
-        under 2.2 A is a clash. Pose 1 went to MD; a highlighted row below it is the pose
-        nearest the crystal.</p>
-      {% set aff = card.affinity or {} %}
-      {% if aff.state == 'ran' %}
-      <p class="note">Boltz-2 scored pose 1 alone, before and after MD: see the affinity
-        block in the Score panel. Running the affinity head on all {{ dp.count }} poses would
-        cost about {{ dp.count * 6 }} minutes and is not done by default.</p>
-      {% endif %}
-      {% else %}
-      <p class="note">No pose table: this archive holds no scores.</p>
-      {% endif %}
-    </section>
-
     <section class="card span-6 vpanel" id="complex">
       <h2>Complex</h2>
       <div class="scope" id="complex-scope">
@@ -251,7 +201,57 @@
       {% endif %}
     </section>
 
-    <section class="card span-6">
+    <section class="card span-12" id="pose-ranking">
+      <h2>Pose ranking</h2>
+      {% set dp = card.poses or {} %}
+      {% if dp.rows %}
+      <table class="poses">
+        <thead>
+          {# Centre and Shape earn their columns: RMSD alone cannot say whether a
+             pose is in the wrong pocket, the wrong way round, or the wrong
+             shape, and those have different fixes. #}
+          <tr><th>#</th><th>Score</th><th>Vina</th><th>pEC50</th>
+              <th>RMSD</th><th>Centre</th><th>Shape</th><th>Contact</th></tr>
+        </thead>
+        <tbody>
+          {% for r in dp.rows %}
+          <tr class="{{ 'chosen' if loop.first }}{{ ' nearest' if dp.best_by_rmsd and r.rank == dp.best_by_rmsd.rank and not loop.first }}">
+            <td>{{ r.rank }}</td>
+            <td>{{ '%.2f'|format(r.score) if r.score is not none else '&mdash;'|safe }}</td>
+            <td>{{ '%.2f'|format(r.vina_energy) if r.vina_energy is not none else '&mdash;'|safe }}</td>
+            <td>{{ '%.2f'|format(r.gnn_pec50) if r.gnn_pec50 is not none else '&mdash;'|safe }}</td>
+            <td class="{{ 'good' if r.rmsd is not none and r.rmsd <= 2 else '' }}">
+              {{ '%.2f'|format(r.rmsd) if r.rmsd is not none else '&mdash;'|safe }}</td>
+            <td class="{{ 'good' if r.centroid_distance is not none and r.centroid_distance <= 4 else '' }}">
+              {{ '%.2f'|format(r.centroid_distance) if r.centroid_distance is not none else '&mdash;'|safe }}</td>
+            <td>{{ '%.2f'|format(r.shape_rmsd) if r.shape_rmsd is not none else '&mdash;'|safe }}</td>
+            <td class="{{ 'bad' if r.closest_contact is not none and r.closest_contact < 2.2 else '' }}">
+              {{ '%.2f'|format(r.closest_contact) if r.closest_contact is not none else '&mdash;'|safe }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="note">Score and Vina in kcal/mol; RMSD, Centre, Shape and Contact in A.
+        <b>RMSD</b> is to the crystal ligand where it lies. <b>Centre</b> is the distance
+        between the two centroids: it says whether the pose is in the right pocket at all.
+        <b>Shape</b> is the RMSD after superposing the two ligands freely, which throws the
+        placement away and asks only whether the molecule is folded the same. A low Centre
+        and a low Shape beside a high RMSD is a ligand in the right site, turned the wrong
+        way round. <b>Contact</b> is the closest heavy-atom approach to the receptor;
+        under 2.2 A is a clash. Pose 1 went to MD; a highlighted row below it is the pose
+        nearest the crystal.</p>
+      {% set aff = card.affinity or {} %}
+      {% if aff.state == 'ran' %}
+      <p class="note">Boltz-2 scored pose 1 alone, before and after MD: see the affinity
+        block in the Score panel. Running the affinity head on all {{ dp.count }} poses would
+        cost about {{ dp.count * 6 }} minutes and is not done by default.</p>
+      {% endif %}
+      {% else %}
+      <p class="note">No pose table: this archive holds no scores.</p>
+      {% endif %}
+    </section>
+
+    <section class="card span-12">
       <h2>Run</h2>
       <ul class="switches">
         <li><span>Protein</span><span>{{ row['uniprot'] or 'sequence' }}</span></li>
@@ -285,7 +285,7 @@
 
     {% if card.displacements %}
 
-    <section class="card span-6">
+    <section class="card span-12">
       <h2>Most displaced pocket side chains</h2>
       <div class="scroll">
         <table>
@@ -307,7 +307,7 @@
 
     {% if card.interaction_table %}
 
-    <section class="card span-6">
+    <section class="card span-12">
       <h2>Interactions</h2>
       <div class="scroll" style="max-height:460px;overflow-y:auto">
         <table>
@@ -332,7 +332,7 @@
     </section>
     {% endif %}
 
-    <section class="card span-6">
+    <section class="card span-12">
       <h2>Interaction map</h2>
       {% if card.pandamap and card.pandamap.png %}
       <img src="{{ url_for('runs.run_file', job_id=row['job_id'], name=card.pandamap.png) }}"
