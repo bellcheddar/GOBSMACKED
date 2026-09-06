@@ -180,15 +180,24 @@
         self.entries[name] = entry;
         if (!self.primary || options.primary) self.primary = entry;
         var colour = options.color !== undefined ? options.color : COLOURS[name];
-        return self.theme(entry, colour, options.ligandColor).then(function () {
-          if (!options.representation) return;
+        // Representation FIRST, theme second. updateRepresentations installs a
+        // fresh representation of the new type, and a fresh representation
+        // carries the default colour theme: doing it the other way round
+        // applied the colour and then threw it away, which is why ten poses
+        // drawn as ball-and-stick came out in element colours with no way to
+        // tell the chosen pose from the rest.
+        var swap = Promise.resolve();
+        if (options.representation) {
           var manager = self.plugin.managers.structure.component;
-          return Promise.all((entry.components || []).map(function (component) {
+          swap = Promise.all((entry.components || []).map(function (component) {
             if (!component.representations.length) return null;
             return manager.updateRepresentations(
               [component], component.representations[0],
               { type: { name: options.representation, params: {} } });
           }));
+        }
+        return swap.then(function () {
+          return self.theme(entry, colour, options.ligandColor);
         });
       });
     }).then(function () { return self; });
