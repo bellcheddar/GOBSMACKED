@@ -366,11 +366,24 @@ def api_bundle():
     except Exception as exc:
         return jsonify({"error": f"Could not write the bundle: {exc}"}), 500
 
+    # The Prepare page sends protein_name, but nothing makes a caller posting a
+    # campaign straight to /api/bundle send it, and then the run page and the
+    # Runs row show a bare accession forever. UniProt entries are cached in the
+    # DB, so for anything resolved through /api/fetch first this is a lookup
+    # rather than a fetch, and a failure here must not cost the bundle.
+    protein_name = protein.get("protein_name") or ""
+    if not protein_name and protein.get("uniprot"):
+        try:
+            entry = fetch_svc.fetch_uniprot(protein["uniprot"])
+            protein_name = (entry or {}).get("name", "")
+        except Exception:                                     # noqa: BLE001
+            protein_name = ""
+
     db.insert_job(
         job_id=job_id,
         title=title or f"{protein.get('uniprot') or 'sequence'} + {ligand.get('name') or 'ligand'}",
         uniprot=protein.get("uniprot"),
-        protein_name=protein.get("protein_name", ""),
+        protein_name=protein_name,
         ligand_name=ligand.get("name", ""),
         ligand_smiles=ligand.get("smiles", ""),
         family=protein.get("family", "other"),

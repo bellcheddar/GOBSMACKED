@@ -64,7 +64,38 @@ a:hover { text-decoration: underline; }
 .brand .centre img { width: 24px; height: 24px; }
 .brand nav { display: flex; gap: 14px; }
 .brand nav a.current { color: var(--phos); }
-.brand .job { color: var(--muted); }
+/* The run identity: ID on top, what the run IS underneath. It sits in a bar
+   that is 12px tall everywhere else, so the subtitle is capped and clipped
+   rather than allowed to push the nav around. */
+.brand .job {
+  display: flex; flex-direction: column; gap: 1px;
+  /* Measured: the subtitle wants about 500px and the bar has 600 of slack at
+     1680 and 200 at 1280, so the cap is the smaller of what the text needs and
+     what the window can spare, rather than one number that is wrong at both. */
+  min-width: 0; max-width: min(60ch, 40vw); line-height: 1.35;
+}
+.brand .job-id { color: var(--muted); }
+.brand .job-sub {
+  /* --ice-dim is the affinity gauge's track, not a text colour: on the slate
+     ground it lands around 2.3:1 and the subtitle was unreadable. Muted is the
+     bar's own text colour, and the size drop carries the hierarchy instead. */
+  display: flex; gap: 4px; min-width: 0;
+  font-size: 11px; color: var(--muted); opacity: .85;
+}
+.brand .job-name {
+  color: var(--ice); font-weight: 600;
+  flex: 0 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.brand .job-org { flex: 0 0 auto; white-space: nowrap; }
+
+/* The same idea in the Runs table: the ID identifies the row, the title says
+   what it is. Capped so one long title cannot widen the Job column. */
+.run-title {
+  display: inline-block; max-width: 30ch;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  vertical-align: bottom;
+}
 
 /* --- Stage rail -------------------------------------------------------- */
 /* The pipeline runs down the left, sticky, so it is always answering "what do
@@ -552,6 +583,12 @@ pre.cmd {
 
 @media (max-width: 1250px) {
   .stages { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  /* The sidebar decks stay here. Only the results and prepare decks were moved
+     down to 900 (see below); .deck and .deck.wide were dragged along with them
+     by mistake, which put the waiting page's two cards side by side on an
+     ordinary laptop window. Those decks are a narrow sidebar beside a main
+     column, not a pair of equals, and 1250 is where the sidebar stops fitting. */
+  .deck, .deck.wide { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* 900, not 1250. At 1250 a perfectly ordinary laptop window collapsed the whole
@@ -564,7 +601,6 @@ pre.cmd {
    window to itself and two columns are about 420 px each, which is the point
    where a structure viewer stops being worth showing side by side. */
 @media (max-width: 900px) {
-  .deck, .deck.wide { grid-template-columns: minmax(0, 1fr); }
   .deck.results, .deck.flow { grid-template-columns: minmax(0, 1fr); }
   .span-4, .span-6, .span-8, .span-12 { grid-column: 1 / -1; }
 }

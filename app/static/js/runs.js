@@ -63,7 +63,12 @@
     body.innerHTML = shown.map(function (run) {
       return "<tr>" +
         "<td><a href='" + run.url + "'>" + run.job_id.slice(-12) + "</a>" +
-        (run.visibility === "private" ? " <span class='pill private'>private</span>" : "") + "</td>" +
+        (run.visibility === "private" ? " <span class='pill private'>private</span>" : "") +
+        // The title under the ID. Twelve characters of a random job ID tell you
+        // nothing about which run this is, and a batch of runs against one
+        // target is otherwise five identical-looking rows.
+        (run.title ? "<br><span class='muted run-title'>" + escape(run.title) + "</span>" : "") +
+        "</td>" +
         "<td class='muted'>" + (run.created || "").slice(0, 10) + "</td>" +
         "<td>" + (run.uniprot || "&mdash;") + "<br><span class='muted'>" +
         (run.protein_name || "").slice(0, 40) + "</span></td>" +
@@ -79,6 +84,12 @@
         (run.grade || "&mdash;") + "</span></td>" +
         "<td>" + modeLed(run) + "</td></tr>";
     }).join("");
+  }
+
+  function escape(text) {
+    var slot = document.createElement("span");
+    slot.textContent = text;
+    return slot.innerHTML;
   }
 
   function modeLed(run) {

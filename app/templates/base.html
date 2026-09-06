@@ -22,10 +22,49 @@
       <a href="{{ url_for('runs.runs_page') }}" {% if tab == 'runs' %}class="current"{% endif %}>Runs</a>
       <a href="{{ url_for('about.about_page') }}" {% if tab == 'about' %}class="current"{% endif %}>About</a>
     </nav>
-    {% if job_id %}<span class="job">{{ job_id }}</span>{% endif %}
+    {#- The run's identity, on every page that has one: the ID, and under it the
+        title and the protein it is about. A results page used to show the ID and
+        nothing else, so five runs of the same target were indistinguishable from
+        the chrome and you had to scroll into the Run card to tell them apart. -#}
+    {% if job_id %}
+    <span class="job">
+      <span class="job-id">{{ job_id }}</span>
+      {%- if row is defined and row %}
+      {#- Two parts, because they truncate differently. The title is whatever
+          length the user gave it and is the half that shrinks; the protein is
+          short, fixed, and the reason the subtitle exists, so it is never the
+          part an ellipsis eats. -#}
+      <span class="job-sub">
+        {%- if row['title'] %}<b class="job-name">{{ row['title'] }}</b>{% endif -%}
+        <span class="job-org">
+          {%- if row['title'] %}&middot; {% endif -%}
+          {{ row['uniprot'] or 'sequence' }}
+          {%- if row['protein_name'] %} &middot; {{ row['protein_name'] }}{% endif -%}
+        </span>
+      </span>
+      {%- endif %}
+    </span>
+    {% endif %}
   </div>
   <a href="mailto:marc@marcdeller.com">marc@marcdeller.com</a>
 </div>
+<script>
+(function () {
+  // The rail and the subnav stick beneath the brand, so they need its real
+  // height. --brand-h was a measured 41px, which was right until the brand
+  // carried a second line on a run page -- and was already wrong at 640px and
+  // below, where the brand wraps. Measure it instead of asserting it.
+  var brand = document.querySelector(".brand");
+  if (!brand) { return; }
+  function measure() {
+    document.documentElement.style.setProperty(
+      "--brand-h", Math.round(brand.getBoundingClientRect().height) + "px");
+  }
+  measure();
+  window.addEventListener("resize", measure);
+  if (window.ResizeObserver) { new ResizeObserver(measure).observe(brand); }
+})();
+</script>
 
 <div class="shell">
   {% block stages %}
