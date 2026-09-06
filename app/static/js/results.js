@@ -160,10 +160,7 @@
           // to its row, so a reset fired on load frames a canvas that is about
           // to change height and leaves the protein sitting on the bottom edge.
           settle(function () {
-            try {
-              scope.viewer.plugin.handleResize();
-              scope.plugin.managers.camera.reset();
-            } catch (err) { /* keep whatever view there is */ }
+            try { scope.viewer.plugin.handleResize(); } catch (err) { /* keep the view */ }
           });
           return scope;
         });
@@ -177,11 +174,11 @@
       // nearly all of it is tools this page has no use for.
       var play = document.getElementById("motion-play");
       if (!play) return;
-      play.addEventListener("click", function () {
+
+      function setPlaying(wanted) {
         var manager = scope.plugin.managers.animation;
-        var playing = play.getAttribute("aria-pressed") === "true";
         try {
-          if (playing) {
+          if (!wanted) {
             manager.stop();
           } else {
             var animation = (manager.animations || []).filter(function (a) {
@@ -191,12 +188,37 @@
             manager.play(animation, { mode: { name: "loop", params: { direction: "forward" } },
                                       maxFPS: 15 });
           }
-          play.setAttribute("aria-pressed", playing ? "false" : "true");
-          play.textContent = playing ? "Play" : "Pause";
+          play.setAttribute("aria-pressed", wanted ? "true" : "false");
+          play.textContent = wanted ? "Pause" : "Play";
+          return true;
         } catch (err) {
           document.getElementById("motion-hud").textContent =
             "playback unavailable: " + err.message;
+          return false;
         }
+      }
+
+      play.addEventListener("click", function () {
+        setPlaying(play.getAttribute("aria-pressed") !== "true");
+      });
+      // Running on arrival: a trajectory panel that opens as a still picture
+      // looks like a viewer that failed to load, and the whole reason this
+      // replaced a video is that it moves.
+      //
+      // The framing comes AFTER playback starts, and is repeated once. Stepping
+      // the model index rebuilds the structure, and that re-frames the camera:
+      // focusing first put the ligand in view and the first animation frame
+      // pulled straight back out to the whole 253-residue chain.
+      settle(function () {
+        setPlaying(true);
+        // The camera is left where Mol* puts it. Framing the ligand here does
+        // not work and I could not find out why: focusLoci is called with a
+        // non-empty element loci, reports success, and the view does not move,
+        // whether it runs before playback, after it, once, or five times with
+        // the structure re-resolved each attempt in case the model-index
+        // animation had invalidated it. Rather than ship a retry loop that
+        // does nothing, this records what was tried. Drag and scroll work, so
+        // the panel is usable; it just opens on the whole chain.
       });
     }).catch(function (err) {
       document.getElementById("motion-hud").textContent =

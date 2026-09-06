@@ -52,9 +52,9 @@
                  poster="{{ url_for('runs.run_file', job_id=row['job_id'], name=lm.poster) }}"
                  data-src="{{ url_for('runs.run_file', job_id=row['job_id'], name=lm.mp4) }}"
                  aria-label="{{ row['ligand_name'] or 'The ligand' }} through the molecular
-                             dynamics run, drawn as element-coloured sticks and turning"></video>
+                             dynamics run, drawn as element-coloured sticks"></video>
           <p class="note">{{ row['ligand_name'] or 'The ligand' }} through the run:
-            {{ lm.atoms }} heavy atoms, flexing in place and turning once.</p>
+            {{ lm.atoms }} heavy atoms, flexing in place.</p>
         </div>
         {% endif %}
       </div>

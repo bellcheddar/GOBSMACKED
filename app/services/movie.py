@@ -265,15 +265,28 @@ def _draw(xyz, chains, pocket, ligand, bonds, limits, times_ps, top) -> list[np.
     return out
 
 
-def _encode(frames: list[np.ndarray], dest: Path) -> None:
-    """Forwards then backwards, so the loop has no cut in it."""
+def _encode(frames: list[np.ndarray], dest: Path, crf: str = CRF) -> None:
+    """Forwards then backwards, so the loop has no cut in it.
+
+    Deliberately untagged. Adding `-color_range pc -colorspace bt709
+    -color_trc bt709` looked like the careful thing to do and made it worse:
+    Chrome honours the transfer function, applies bt709 gamma to what is really
+    sRGB data, and the flat background rendered eleven units dark in every
+    channel. Against a panel of exactly that colour it became a visible
+    rectangle. Measured either side of the change on the same page: (35, 48, 69)
+    untagged against a card of (36, 48, 68), and (25, 37, 58) tagged.
+
+    What DOES need fixing is banding, which is why the ligand clip takes a much
+    lower CRF: it is a small flat dark field where blocking is the only artefact
+    that shows, and the file is a few tens of kilobytes at any useful setting.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     order = list(range(len(frames))) + list(range(len(frames) - 2, 0, -1))
     height, width, _ = frames[0].shape
     cmd = ["ffmpeg", "-y", "-loglevel", "error",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}",
            "-r", str(FPS), "-i", "-",
-           "-c:v", "libx264", "-preset", "slow", "-crf", CRF,
+           "-c:v", "libx264", "-preset", "slow", "-crf", crf,
            "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(dest)]
     proc = subprocess.run(cmd, input=b"".join(frames[i].tobytes() for i in order),
                           capture_output=True)
@@ -294,6 +307,22 @@ def _poster(frame: np.ndarray, dest: Path) -> None:
 # ---------------------------------------------------------------------------
 
 LIGAND_W, LIGAND_H = 560, 460
+# Much lower than the fold clip's. This one is a small flat field with a
+# molecule on it, where banding is the only artefact that shows, and the whole
+# file is under a megabyte at any setting worth using.
+LIGAND_CRF = "20"
+# No rotation. It was added to suggest depth and it reads as a distraction
+# beside a static dial; the shading and the depth-sorted sticks carry the
+# three-dimensionality on their own. What moves is the molecule's own
+# conformation through the run, which is the only motion here that means
+# anything.
+LIGAND_TURNS = 0.0
+# The card's own colour. The round trip lands a single unit low in blue and
+# nudging the source does not survive quantisation, so it is left alone: one
+# unit is far below anything visible. The artefact that WAS visible was banding
+# across a large flat dark field, and that is what the low CRF and the
+# full-range tags above fix.
+LIGAND_BACKGROUND = BACKGROUND
 # CPK, brightened for a dark panel. Carbon is the one that matters: true CPK
 # carbon is near-black, which on this ground is a hole rather than a molecule.
 ELEMENT_COLOURS = {
@@ -307,7 +336,7 @@ ATOM_RADIUS = {"C": 0.34, "N": 0.34, "O": 0.33, "S": 0.42, "P": 0.42, "H": 0.20}
 
 def render_ligand(topology: str | Path, trajectory: str | Path, mp4: str | Path,
                   poster: str | Path, ligand_resname: Optional[str] = None,
-                  turns: float = 1.0) -> dict[str, Any]:
+                  turns: float = LIGAND_TURNS) -> dict[str, Any]:
     """The docked molecule alone, in element colours, turning as it flexes.
 
     A different job from `render`, which shows a ligand inside a fold and is
@@ -347,7 +376,7 @@ def render_ligand(topology: str | Path, trajectory: str | Path, mp4: str | Path,
     symbols = [top.atom(int(i)).element.symbol.upper() for i in ligand]
     bonds = _bonds_within(xyz[0], symbols)
     frames = _draw_ligand(xyz, symbols, bonds, turns)
-    _encode(frames, mp4)
+    _encode(frames, mp4, crf=LIGAND_CRF)
     _poster(frames[0], poster)
     return {"mp4": mp4.name, "poster": poster.name, "frames": int(traj.n_frames),
             "atoms": int(len(symbols)), "bonds": len(bonds),
@@ -379,9 +408,10 @@ def _draw_ligand(xyz, symbols, bonds, turns: float) -> list[np.ndarray]:
     # else. The turn needs a little room, hence not 1.0.
     reach = float(np.abs(centred).max()) * 1.08
 
-    fig = plt.figure(figsize=(LIGAND_W / DPI, LIGAND_H / DPI), dpi=DPI, facecolor=BACKGROUND)
+    fig = plt.figure(figsize=(LIGAND_W / DPI, LIGAND_H / DPI), dpi=DPI,
+                     facecolor=LIGAND_BACKGROUND)
     ax = fig.add_axes([0, 0, 1, 1])
-    ax.set_facecolor(BACKGROUND)
+    ax.set_facecolor(LIGAND_BACKGROUND)
     ax.set_xlim(-reach * LIGAND_W / LIGAND_H, reach * LIGAND_W / LIGAND_H)
     ax.set_ylim(-reach, reach)
     ax.set_aspect("equal")
@@ -428,7 +458,7 @@ def _draw_ligand(xyz, symbols, bonds, turns: float) -> list[np.ndarray]:
                 radius = ATOM_RADIUS.get(symbol, 0.36) * scale
                 ax.add_collection(_sphere(a, radius,
                                           ELEMENT_COLOURS.get(symbol, DEFAULT_ELEMENT)))
-        ax.add_collection(LineCollection(outline_segments, colors=BACKGROUND,
+        ax.add_collection(LineCollection(outline_segments, colors=LIGAND_BACKGROUND,
                                          linewidths=outline_widths, capstyle="round",
                                          zorder=1))
         ax.add_collection(LineCollection(segments, colors=colours, linewidths=widths,
