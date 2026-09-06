@@ -16,6 +16,8 @@ residue.
 
 from __future__ import annotations
 
+import contextlib
+
 import subprocess
 import sys
 import tempfile
@@ -210,7 +212,7 @@ def pandamap(structure: str | Path, out_png: str | Path,
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with plt.rc_context(DARK_STYLE):
+        with plt.rc_context(DARK_STYLE), _pandamap_layout(plt):
             mapper = HybridProtLigMapper(str(structure), ligand_resname=ligand_ccd)
             # DSSP is an external binary the droplet does not carry; PandaMap's
             # own solvent-accessibility fallback is used instead.
@@ -227,6 +229,68 @@ def pandamap(structure: str | Path, out_png: str | Path,
         "interpretation": (affinity or {}).get("interpretation", "") if isinstance(affinity, dict) else "",
         "note": (affinity or {}).get("note", "") if isinstance(affinity, dict) else "",
     }
+
+
+@contextlib.contextmanager
+def _pandamap_layout(plt):
+    """Three changes to how PandaMap draws, made while it draws.
+
+    None of them is reachable through its API: `visualize` takes a `title` but
+    calls `plt.title` in both branches of the `if`, so there is no way to ask for
+    none, and neither the legend's placement nor the figure size is exposed at
+    all. `run_analysis` forwards neither. So the three calls are wrapped for the
+    duration and restored afterwards, which is narrower than vendoring the
+    function and re-writing it.
+
+    * The title goes. "Protein-Ligand Interactions: superposed_md_final" is the
+      name of a working file, and the panel it sits in is already headed
+      Interaction map.
+    * The legend moves out of the axes to the right. Inside, at `upper right`,
+      it sits on top of the diagram and covers whichever residues happen to be
+      there; outside, the diagram gets the whole square and the legend gets a
+      column of its own.
+    * The figure grows and turns landscape, because a square figure with a
+      column beside it is no longer square.
+    """
+    original_title, original_subplots = plt.title, plt.subplots
+    from matplotlib.axes import Axes
+
+    original_legend = Axes.legend
+
+    def no_title(*args, **kwargs):
+        return None
+
+    def wider(*args, **kwargs):
+        kwargs["figsize"] = (16, 12)
+        return original_subplots(*args, **kwargs)
+
+    def legend_at_the_side(self, *args, **kwargs):
+        # PandaMap's first handle carries the same label as the legend's title,
+        # so the heading "Interacting structural groups" is immediately followed
+        # by an entry saying "Interacting structural groups". The duplicate goes;
+        # the swatch it carried explains itself, since every residue box on the
+        # diagram is drawn that way.
+        title = kwargs.get("title")
+        handles = kwargs.get("handles") or (args[0] if args else None)
+        if handles and title:
+            kept = [h for h in handles
+                    if getattr(h, "get_label", lambda: "")() != title]
+            if kept and len(kept) < len(handles):
+                kwargs["handles"] = kept
+                args = ()
+        # labelspacing 2.6 rather than the default: it is what makes the column
+        # stand as tall as the diagram beside it instead of a small block
+        # floating against a square of drawing.
+        kwargs.update(loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=False,
+                      fontsize=15, title_fontsize=17, labelspacing=2.6,
+                      handletextpad=1.0, borderaxespad=0.0)
+        return original_legend(self, *args, **kwargs)
+
+    plt.title, plt.subplots, Axes.legend = no_title, wider, legend_at_the_side
+    try:
+        yield
+    finally:
+        plt.title, plt.subplots, Axes.legend = original_title, original_subplots, original_legend
 
 
 def _darken_light_greys(path: Path) -> bool:
