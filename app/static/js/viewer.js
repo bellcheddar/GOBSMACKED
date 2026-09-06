@@ -235,6 +235,52 @@
      table or the residue table depends on how the file was parsed, and reading
      the wrong one throws inside a promise where the only visible symptom is the
      HUD showing "Cannot read properties of undefined". */
+  /* Frame the ligand by computing its sphere and handing that to the camera.
+
+     focusLoci works for a structure loaded through loadStructureFromData and
+     does nothing at all for one loaded through loadTrajectory: it is called
+     with a non-empty element loci, returns success, and the view does not move.
+     Rather than keep varying the call that fails, this asks the camera for a
+     sphere, which needs no loci resolution and no structure identity: just a
+     centre and a radius in world space, read from the unit conformations. */
+  Scope.prototype.focusLigandSphere = function (name, extraRadius) {
+    var data = this.data(name);
+    if (!data) return false;
+    var sum = [0, 0, 0], points = [], position = [0, 0, 0];
+    try {
+      data.units.forEach(function (unit) {
+        var hierarchy = unit.model.atomicHierarchy;
+        if (!hierarchy || !hierarchy.residueAtomSegments) return;
+        for (var i = 0; i < unit.elements.length; i++) {
+          var element = unit.elements[i];
+          var residueIndex = hierarchy.residueAtomSegments.index[element];
+          var comp = compId(hierarchy, element, residueIndex);
+          if (!comp || STANDARD_RESIDUE[comp] || NON_LIGAND[comp]) continue;
+          unit.conformation.position(element, position);
+          points.push([position[0], position[1], position[2]]);
+          sum[0] += position[0]; sum[1] += position[1]; sum[2] += position[2];
+        }
+      });
+    } catch (err) { return false; }
+    if (!points.length) return false;
+
+    var centre = [sum[0] / points.length, sum[1] / points.length, sum[2] / points.length];
+    var radius = 0;
+    points.forEach(function (p) {
+      var d = Math.sqrt(Math.pow(p[0] - centre[0], 2) + Math.pow(p[1] - centre[1], 2)
+                        + Math.pow(p[2] - centre[2], 2));
+      if (d > radius) radius = d;
+    });
+    try {
+      this.plugin.managers.camera.focusSphere(
+        { center: centre, radius: Math.max(radius, 3) },
+        { extraRadius: extraRadius === undefined ? 10 : extraRadius, durationMs: 0 });
+      return true;
+    } catch (err) {
+      return false;
+    }
+  };
+
   Scope.prototype.focusLigand = function (name) {
     var data = this.data(name);
     if (!data) return false;

@@ -211,14 +211,19 @@
       // pulled straight back out to the whole 253-residue chain.
       settle(function () {
         setPlaying(true);
-        // The camera is left where Mol* puts it. Framing the ligand here does
-        // not work and I could not find out why: focusLoci is called with a
-        // non-empty element loci, reports success, and the view does not move,
-        // whether it runs before playback, after it, once, or five times with
-        // the structure re-resolved each attempt in case the model-index
-        // animation had invalidated it. Rather than ship a retry loop that
-        // does nothing, this records what was tried. Drag and scroll work, so
-        // the panel is usable; it just opens on the whole chain.
+        // focusSphere, not focusLoci: the loci route does nothing for a
+        // structure that arrived through loadTrajectory, and a sphere needs no
+        // loci resolution. Re-resolved each attempt because stepping the model
+        // index replaces the structure.
+        var tries = 0;
+        (function frame() {
+          try {
+            var all = scope.plugin.managers.structure.hierarchy.current.structures;
+            if (all.length) scope.entries.motion = all[all.length - 1];
+          } catch (err) { /* keep the entry we have */ }
+          if (scope.focusLigandSphere("motion", 10)) return;
+          if (++tries < 4) window.setTimeout(frame, 700);
+        })();
       });
     }).catch(function (err) {
       document.getElementById("motion-hud").textContent =
