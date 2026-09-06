@@ -45,6 +45,12 @@ LIGAND_ID = "LIG"
 DEFAULT_N_FRAMES = 5
 DEFAULT_WINDOW = 0.2
 DEFAULT_RECYCLING = 3
+# How far the prediction may deviate from the template, in Angstroms. The point
+# of the template is to hold the protein at the conformation MD produced, so it
+# is tight: 2 A is the scale the scorecard already calls a good pocket backbone
+# agreement. Loose enough and the template stops meaning anything; tighter and
+# the potential has nothing to relax into.
+DEFAULT_THRESHOLD_A = 2.0
 
 
 def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
@@ -80,8 +86,15 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     except Exception as exc:                       # noqa: BLE001 - decorative stage, never fatal
         return decline(out_dir, log, warnings, f"the poses could not be converted to mmCIF: {exc}")
 
-    msa = ensure_msa(sequence, log, warnings)
-    scored, error = predict(written, sequence, smiles, msa, cfg, out_dir, log)
+    # From the first pose's own coordinates, not from the campaign: see
+    # sequence_of. Every pose in one run is the same chain, so one lookup does.
+    scored_sequence = sequence_of(poses[0][1]) or sequence
+    if scored_sequence != sequence:
+        log(f"affinity: scoring the {len(scored_sequence)} residues in the structure, "
+            f"not the {len(sequence)} in the campaign")
+
+    msa = ensure_msa(scored_sequence, log, warnings)
+    scored, error = predict(written, scored_sequence, smiles, msa, cfg, out_dir, log)
     if error:
         return decline(out_dir, log, warnings, error)
 
@@ -190,19 +203,85 @@ def frame_indices(results: Path, cfg: dict) -> list[int]:
 
 
 def to_cif(source: Path, dest: Path) -> Path:
-    """PDB in, mmCIF out.
+    """The pose's protein, as mmCIF, with the ligand left out.
 
-    mmCIF rather than PDB because the ligand is a full residue with bond orders
-    that a HETATM block cannot carry, and because Boltz's own reader is happiest
-    there.
+    Two things had to be got right here and neither is guessable.
+
+    The ligand is removed. Boltz's template reader parses templates as polymers,
+    and a ligand chain in one walks its residue index off the end of the
+    sequence: `res_name = sequence[j]`, IndexError, inside parse_polymer. The
+    ligand is declared separately in the YAML as SMILES, which is where Boltz
+    wants it.
+
+    mmCIF rather than PDB because that is what Boltz's template reader takes.
     """
     import gemmi
 
     structure = gemmi.read_structure(str(source))
+    # setup_entities() first: remove_ligands_and_waters() reads the entity_type
+    # that only setup assigns, and raises "missing entity_type in chain A"
+    # without it. Called again afterwards to renumber what is left.
     structure.setup_entities()
+    structure.remove_ligands_and_waters()
+    structure.remove_empty_chains()
+    structure.setup_entities()
+    fill_entity_sequences(structure)
+    structure.assign_label_seq_id()
     dest.parent.mkdir(parents=True, exist_ok=True)
     structure.make_mmcif_document().write_file(str(dest))
     return dest
+
+
+def fill_entity_sequences(structure) -> None:
+    """Give each polymer entity the canonical sequence gemmi leaves empty.
+
+    Without this the mmCIF carries no `_entity_poly_seq` loop, because gemmi
+    only writes one for an entity whose full_sequence is set and `setup_entities`
+    does not set it from the coordinates. Boltz builds its residue list from
+    exactly that loop, so a template without it gives an empty list and the
+    first residue lookup raises `IndexError: list index out of range` inside
+    parse_polymer. The template is silently useless and the error names neither
+    the file nor the reason.
+    """
+    import gemmi
+
+    for entity in structure.entities:
+        if entity.entity_type != gemmi.EntityType.Polymer or entity.full_sequence:
+            continue
+        for model in structure:
+            for chain in model:
+                polymer = chain.get_polymer()
+                if len(polymer):
+                    entity.full_sequence = [residue.name for residue in polymer]
+                    break
+            if entity.full_sequence:
+                break
+
+
+def sequence_of(path: Path) -> str:
+    """The one-letter sequence of the structure being scored.
+
+    Taken from the structure and never from the campaign. The campaign carries
+    UniProt's full precursor -- 1,210 residues for EGFR -- while the pose is the
+    trimmed domain, 253 of them. Boltz maps a template onto the input sequence
+    by index, so handing it the precursor beside a domain template walks off the
+    end of the list and raises IndexError deep inside its parser, which is
+    exactly what happened on the first real run.
+
+    Deriving it from the file also makes the two agree by construction, rather
+    than by two pieces of code happening to trim the same way.
+    """
+    import gemmi
+
+    structure = gemmi.read_structure(str(path))
+    structure.setup_entities()
+    structure.remove_ligands_and_waters()
+    for model in structure:
+        for chain in model:
+            polymer = chain.get_polymer()
+            if len(polymer):
+                return gemmi.one_letter_code(polymer.extract_sequence())
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -224,18 +303,53 @@ def ensure_msa(sequence: str, log, warnings: list[str]) -> dict[str, Any]:
     MSA_CACHE.mkdir(parents=True, exist_ok=True)
     key = msa_key(sequence)
     path = MSA_CACHE / f"{key}.a3m"
-    if path.exists() and path.stat().st_size > 0:
-        age_days = (time.time() - path.stat().st_mtime) / 86400
-        log(f"affinity: MSA cache hit for {key}, written {age_days:.0f} days ago")
-        return {"cached": True, "key": key, "path": str(path),
-                "depth": depth_of(path), "seconds": 0.0,
-                "age_days": round(age_days, 1)}
+    for path in (MSA_CACHE / f"{key}.csv", MSA_CACHE / f"{key}.a3m"):
+        if path.exists() and path.stat().st_size > 0:
+            age_days = (time.time() - path.stat().st_mtime) / 86400
+            log(f"affinity: MSA cache hit for {key}, written {age_days:.0f} days ago")
+            return {"cached": True, "key": key, "path": str(path),
+                    "depth": depth_of(path), "seconds": 0.0,
+                    "age_days": round(age_days, 1)}
     return {"cached": False, "key": key, "path": None, "depth": None, "seconds": None}
 
 
+def capture_msa(work: Path, msa: dict, log) -> dict:
+    """Keep the alignment the first pose paid for.
+
+    Boltz writes the MSA it generated to `msa/<name>_0.csv`, in exactly the
+    `key,sequence` form its own `msa:` field accepts. Without this every pose
+    calls the public ColabFold server again for the same protein: five frames
+    plus the docked pose is six identical queries, six times the wait, against a
+    free service. Copied into the shared cache, the second pose onwards reads it
+    from disk and every later run on the same trimmed sequence does too.
+    """
+    if msa.get("cached"):
+        return msa
+    candidates = sorted(work.rglob("msa/*_0.csv")) + sorted(work.rglob("msa/*_0.a3m"))
+    for candidate in candidates:
+        if not candidate.exists() or candidate.stat().st_size == 0:
+            continue
+        MSA_CACHE.mkdir(parents=True, exist_ok=True)
+        dest = MSA_CACHE / f"{msa['key']}{candidate.suffix}"
+        # Copied then moved, so a half-written cache entry is never found by a
+        # run that starts while this one is still copying 3 MB.
+        partial = dest.with_suffix(candidate.suffix + ".part")
+        shutil.copyfile(candidate, partial)
+        partial.replace(dest)
+        depth = depth_of(dest)
+        log(f"affinity: cached the MSA for {msa['key']}, {depth or '?'} sequences, "
+            f"so the remaining poses do not ask the server again")
+        return {**msa, "cached": True, "path": str(dest), "depth": depth,
+                "generated_here": True}
+    return msa
+
+
 def depth_of(path: Path) -> Optional[int]:
+    """Sequences in the alignment: header lines in a3m, data rows in CSV."""
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
+            if path.suffix == ".csv":
+                return max(0, sum(1 for _ in fh) - 1)      # minus the header row
             return sum(1 for line in fh if line.startswith(">"))
     except OSError:
         return None
@@ -259,6 +373,8 @@ def predict(written: list[tuple[str, Path]], sequence: str, smiles: str,
             if error:
                 return scored, error
             scored.append(result)
+            # The first pose pays for the alignment; the rest read it off disk.
+            msa = capture_msa(out_dir / "boltz" / name, msa, log)
         bar.update(len(written), note="done")
     return scored, None
 
@@ -266,7 +382,9 @@ def predict(written: list[tuple[str, Path]], sequence: str, smiles: str,
 def predict_one(name: str, cif: Path, sequence: str, smiles: str, msa: dict,
                 cfg: dict, out_dir: Path, log_path: Path) -> tuple[dict, Optional[str]]:
     yaml_path = out_dir / "frames" / f"{name}.yaml"
-    yaml_path.write_text(boltz_input(sequence, smiles, cif, msa), encoding="utf-8")
+    threshold = float(cfg.get("template_threshold_a", DEFAULT_THRESHOLD_A)
+                      or DEFAULT_THRESHOLD_A)
+    yaml_path.write_text(boltz_input(sequence, smiles, cif, msa, threshold), encoding="utf-8")
     work = out_dir / "boltz" / name
     work.mkdir(parents=True, exist_ok=True)
 
@@ -288,9 +406,18 @@ def predict_one(name: str, cif: Path, sequence: str, smiles: str, msa: dict,
 def boltz_command(yaml_path: Path, work: Path, cfg: dict, msa: dict) -> list[str]:
     """The subprocess, entering the affinity environment.
 
-    `--use_potentials` is never passed. It steers diffusion, which is bypassed
-    here, and on Apple silicon it kills the whole predict process with a shape
-    mismatch that is trajectory-dependent, so it looks intermittent and is not.
+    `--use_potentials` IS passed, and it has to be: Boltz enforces a forced
+    template through a steering potential, so without the flag `force: true`
+    is silently inert and the pose this pipeline spent an hour producing does
+    not constrain anything.
+
+    It is not free. On Apple silicon `--use_potentials` can kill the whole
+    predict process with a shape mismatch, from a masked assignment on MPS
+    returning different counts for the same mask. It is trajectory-dependent,
+    so it looks intermittent and is not, and it is a crash rather than an
+    exception: the subprocess dies and this stage records why. That is survivable
+    here precisely because this stage is one subprocess per pose and never fatal
+    to the run.
     """
     override = os.environ.get("GOBSMACKED_BOLTZ")
     prefix = override.split() if override else ["pixi", "run", "-e", "affinity", "boltz"]
@@ -298,13 +425,15 @@ def boltz_command(yaml_path: Path, work: Path, cfg: dict, msa: dict) -> list[str
            "--out_dir", str(work),
            "--recycling_steps", str(int(cfg.get("recycling_steps", DEFAULT_RECYCLING) or 3)),
            "--diffusion_samples", "1",
-           "--output_format", "mmcif"]
+           "--output_format", "mmcif",
+           "--use_potentials"]
     if not msa.get("cached"):
         cmd += ["--use_msa_server"]
     return cmd
 
 
-def boltz_input(sequence: str, smiles: str, cif: Path, msa: dict) -> str:
+def boltz_input(sequence: str, smiles: str, cif: Path, msa: dict,
+                threshold: float = DEFAULT_THRESHOLD_A) -> str:
     """Boltz's YAML: the complex as a template, and the affinity head asked for."""
     lines = [
         "version: 1",
@@ -321,7 +450,16 @@ def boltz_input(sequence: str, smiles: str, cif: Path, msa: dict) -> str:
         f"      smiles: '{smiles}'",
         "templates:",
         f"  - cif: {cif}",
+        # Forced, with a threshold in Angstroms: the prediction may not deviate
+        # from this structure by more than that. The whole point of the stage is
+        # that the affinity head reads the conformation MD produced rather than
+        # one the model invented, and an unforced template only conditions the
+        # trunk.
+        #
+        # Boltz implements this as a steering potential, so it does nothing
+        # unless --use_potentials is passed. See boltz_command.
         "    force: true",
+        f"    threshold: {threshold}",
         "properties:",
         "  - affinity:",
         f"      binder: {LIGAND_ID}",
@@ -380,9 +518,17 @@ def summarise(scored: list[dict], cfg: dict, msa: dict,
         "schema": "1.0",
         "requested": True,
         "ran": True,
-        "route": "boltz-template",
+        # Not "boltzina": the diffusion module still runs. What it does not do
+        # is wander, because the template is forced through a steering potential
+        # and the prediction may not leave it by more than the threshold. Named
+        # for what happened rather than for the pattern it approximates.
+        "route": "boltz-forced-template",
         "engine": {"recycling_steps": int(cfg.get("recycling_steps", DEFAULT_RECYCLING) or 3),
-                   "diffusion": "one sample, template forced"},
+                   "template_threshold_a": float(cfg.get("template_threshold_a",
+                                                         DEFAULT_THRESHOLD_A)
+                                                 or DEFAULT_THRESHOLD_A),
+                   "potentials": True,
+                   "diffusion": "one sample, constrained to the template"},
         "frames": {"mode": (cfg.get("frames") or "cluster").lower(),
                    "scored": [name for name, _ in poses]},
         "msa": msa,

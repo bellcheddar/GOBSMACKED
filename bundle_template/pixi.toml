@@ -96,6 +96,21 @@ rdkit = "*"
 [feature.affinity.pypi-dependencies]
 boltz = ">=2.2"
 
+[feature.affinity.activation.env]
+# The same libomp clash the default environment has, and it needs saying twice:
+# [activation.env] at the bottom of this file belongs to the DEFAULT feature,
+# and this environment is declared with no-default-feature = true, so it does
+# not inherit it. Without this line boltz aborts on import with
+#
+#   OMP: Error #15: Initializing libomp.dylib, but found libomp.dylib already
+#   initialized
+#
+# which is conda-forge's scientific stack and PyPI's torch wheel each bringing
+# their own OpenMP into one process. It is an unsafe-by-documentation
+# workaround; BoltzMaker verified a real MPS computation still gives the right
+# answer with it set before relying on it.
+KMP_DUPLICATE_LIB_OK = "TRUE"
+
 [environments]
 # pixi run gobsmacked           dock and MD, the smallest install
 # pixi run -e fold gobsmacked   adds ESMFold, for a bundle with no model

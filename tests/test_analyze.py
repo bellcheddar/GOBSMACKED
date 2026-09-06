@@ -173,3 +173,29 @@ def test_validity_is_checked_in_the_frame_the_box_is_defined_in(egfr_card):
     assert "inside_box" in checks, "the box check did not run"
     assert checks["inside_box"] is True
     assert card["scorecard"]["validity"]["capped"] is False
+
+
+def test_every_field_ingest_reads_survives_into_the_analysis(tmp_path):
+    """The upload route rebuilt Results by listing its fields, so a field added
+    to the dataclass was silently dropped on the way to the card: the affinity
+    block was read from the archive and then lost, and the panel reported that
+    the archive predated a stage it had just run.
+
+    dataclasses.replace carries everything, and this asserts the shape rather
+    than the one field that happened to be forgotten."""
+    import dataclasses
+
+    from app.services import ingest
+
+    peek = ingest.Results(root=tmp_path / "a", manifest={"m": 1}, campaign={"c": 1},
+                          summary={"s": 1}, affinity={"ran": True}, present=["x"],
+                          missing_optional=["y"], warnings=["w"])
+    moved = dataclasses.replace(peek, root=tmp_path / "b", warnings=list(peek.warnings))
+    for field in dataclasses.fields(ingest.Results):
+        if field.name == "root":
+            continue
+        assert getattr(moved, field.name) == getattr(peek, field.name), field.name
+    assert moved.root == tmp_path / "b"
+    # A copied list, so appending a warning to one does not touch the other.
+    moved.warnings.append("later")
+    assert peek.warnings == ["w"]

@@ -12,6 +12,7 @@ can be reported in the response that caused it rather than found in a log.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
 import time
@@ -102,10 +103,12 @@ def api_upload():
         shutil.rmtree(results_dir, ignore_errors=True)
     shutil.move(str(peek.root), str(results_dir))
     shutil.move(str(temp_archive), str(run_dir / "results.tar.gz"))
-    results = ingest_svc.Results(root=results_dir, manifest=peek.manifest,
-                                 campaign=peek.campaign, summary=peek.summary,
-                                 present=peek.present, missing_optional=peek.missing_optional,
-                                 warnings=list(peek.warnings))
+    # dataclasses.replace, not a hand-written constructor call. The old one
+    # listed every field, so a field added to Results was simply dropped here:
+    # the affinity block arrived, was read by ingest, and then vanished on its
+    # way to the card, which reported "this archive was built before the
+    # affinity stage existed" about an archive that had just been scored.
+    results = dataclasses.replace(peek, root=results_dir, warnings=list(peek.warnings))
     if not ingest_svc.campaign_matches(results, row["campaign_yaml"] or ""):
         results.warnings.append(
             "The campaign in this archive differs from the one this server issued. "

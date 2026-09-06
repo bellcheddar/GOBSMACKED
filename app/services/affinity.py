@@ -52,9 +52,30 @@ def summarise(block: dict) -> dict[str, Any]:
         "msa": block.get("msa") or {},
         "seconds": block.get("seconds"),
         "route": block.get("route"),
+        "how": how(block),
         "unit": block.get("unit", ""),
         "verdict": verdict(pre, post, delta),
     }
+
+
+def how(block: dict) -> str:
+    """What was actually done, in the reader's words rather than the route's.
+
+    The wording has to follow the route or it lies. On the forced route Boltz's
+    diffusion still runs, constrained to stay within a threshold of the pose;
+    on the unforced one it runs free and the pose only conditions the trunk.
+    Those are different measurements and the panel should not describe one while
+    reporting the other.
+    """
+    engine = block.get("engine") or {}
+    threshold = engine.get("template_threshold_a")
+    if block.get("route") == "boltz-forced-template" and threshold:
+        return (f"Boltz-2's affinity head. The complex was held within {threshold:g} A of the "
+                f"structure this pipeline produced while Boltz-2 rebuilt it, so the head reads "
+                f"the docked and relaxed conformations rather than one of its own.")
+    return ("Boltz-2's affinity head. The structure this pipeline produced conditioned the "
+            "prediction but did not constrain it, so the coordinates scored are partly "
+            "Boltz-2's own.")
 
 
 def row(label: str, before, after, sd, change, higher_is_better: bool) -> Optional[dict]:

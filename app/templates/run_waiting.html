@@ -7,11 +7,20 @@
     <p class="muted">{{ row['uniprot'] or 'sequence' }} &middot; {{ row['ligand_name'] or 'ligand' }}
       &middot; {{ row['family'] }}
       {% if row['reference_pdb'] %}&middot; reference {{ row['reference_pdb'] }}{% endif %}</p>
-    <p>This run has a bundle but no results yet. Run it, then upload
-      <code>results.tar.gz</code> on the Analyze tab.</p>
-    <pre class="cmd">tar xzf run_bundle_{{ row['job_id'] }}.tar.gz && cd run_bundle_{{ row['job_id'] }}
-pixi install
-pixi run gobsmacked</pre>
+    <p>This run has a bundle but no results yet. Run it on a machine with a GPU, then upload
+      <code>results.tar.gz</code> on the Analyze tab. It is written beside <code>run.sh</code>
+      at the top of the unpacked bundle.</p>
+    {# One line, and the same one the Prepare tab hands out: run.sh installs pixi
+       if the machine has not got it, builds the environment from the lock file
+       inside the bundle, and runs every stage. The three-line version this
+       replaced was left behind by that change and told people to unpack an
+       archive they had not downloaded yet, then run a pixi command that does
+       not install the affinity environment. #}
+    <pre class="cmd">curl -fL "{{ url_for('runs.download_bundle', job_id=row['job_id'], _external=True) }}" | tar xz \
+  && cd run_bundle_{{ row['job_id'] }} \
+  && ./run.sh</pre>
+    <p class="note">Needs only curl and bash. Re-running resumes: finished stages are skipped,
+      so a failure costs the stage that failed and not the hour before it.</p>
     <p><a class="btn" href="{{ url_for('runs.download_bundle', job_id=row['job_id']) }}">Download bundle</a>
        <a class="btn" href="{{ url_for('analyze.analyze_page') }}">Go to Analyze</a></p>
     {% if row['error'] %}<p class="note" style="color:var(--red)">Last attempt failed: {{ row['error'] }}</p>{% endif %}

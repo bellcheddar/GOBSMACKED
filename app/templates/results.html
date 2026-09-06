@@ -93,10 +93,10 @@
         </tbody>
       </table>
       <p class="note">{{ aff.verdict }}</p>
-      <p class="note">{{ aff.unit }}. Boltz-2's affinity head, scored on a pose this pipeline
-        already had rather than one it diffused. It is not a free energy, it is not comparable
-        across targets, and it is not evidence that the pose is correct: nothing here is weighed
-        against a crystal, so none of it enters the score above.</p>
+      <p class="note">{{ aff.unit }}.</p>
+      <p class="note">{{ aff.how }} It is not a free energy, it is not comparable across targets,
+        and it is not evidence that the pose is correct: nothing here is weighed against a
+        crystal, so none of it enters the score above.</p>
       {% elif aff.state %}
       <h3>Predicted affinity</h3>
       <p class="note">{{ aff.note }}</p>
