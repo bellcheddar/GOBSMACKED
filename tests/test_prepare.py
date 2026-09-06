@@ -239,7 +239,11 @@ def test_the_run_command_is_one_line_and_self_contained(client, app):
     assert command.endswith("./run.sh")
     # An absolute URL, or pasting it into a terminal fetches nothing.
     assert "http://localhost/runs/" in command or "https://" in command
-    assert body["results_path"].endswith("results/results.tar.gz")
+    # Beside run.py, not inside results/. The page tells the reader where to find
+    # the file they have to upload, and it pointed into a directory of twenty
+    # PDBs for as long as the archive was written there.
+    assert body["results_path"].endswith(f"run_bundle_{body['job_id']}/results.tar.gz")
+    assert "/results/" not in body["results_path"]
     assert 30 <= body["estimate_minutes"] <= 120, body["estimate_minutes"]
 
 
@@ -283,3 +287,49 @@ def test_the_bundle_carries_its_lock_and_an_executable_bootstrap(client, app):
     assert "platforms:" in lock and "osx-arm64" in lock and "linux-64" in lock, \
         "the lock must cover both platforms the bundle claims to support"
     assert len(lock) > 100_000, "that lock looks empty"
+
+
+def test_the_campaign_carries_an_affinity_block(client):
+    """On by default, and written out even when it is off.
+
+    An archive with no affinity block could otherwise mean either "this run
+    declined it" or "this bundle predates the stage", and Analyze has to tell
+    those apart to know whether a missing panel is a choice or a gap.
+    """
+    response = client.post("/api/bundle", json={
+        "protein": {"sequence": "MRPSGTAGAALLALL", "chain": "A"},
+        "ligand": {"name": "x", "smiles": "CCO"},
+        "pocket": {"residues": ["A:1"], "center": [0, 0, 0], "box": [18, 18, 18]},
+        "md": {"production_ps": 500}})
+    assert response.status_code == 200, response.get_json()
+
+    from app import db
+
+    campaign = yaml.safe_load(db.get_job(response.get_json()["job_id"])["campaign_yaml"])
+    assert campaign["affinity"] == {
+        "include": True, "frames": "cluster", "n_frames": 5,
+        "window_fraction": 0.2, "recycling_steps": 3}
+
+    off = client.post("/api/bundle", json={
+        "protein": {"sequence": "MRPSGTAGAALLALL", "chain": "A"},
+        "ligand": {"name": "x", "smiles": "CCO"},
+        "pocket": {"residues": ["A:1"], "center": [0, 0, 0], "box": [18, 18, 18]},
+        "md": {"production_ps": 500},
+        "affinity": {"include": False, "frames": "single"}})
+    campaign = yaml.safe_load(db.get_job(off.get_json()["job_id"])["campaign_yaml"])
+    assert campaign["affinity"]["include"] is False
+    assert campaign["affinity"]["frames"] == "single"
+
+
+def test_the_estimate_counts_affinity_only_when_it_was_asked_for():
+    """Otherwise every run that turned the stage off is quoted minutes too long."""
+    from app.routes.prepare import estimate_minutes
+
+    md = {"production_ps": 1000, "equilibration_ps": 100}
+    dock = {"mode": "hybrid"}
+    off = estimate_minutes(md, dock, {"include": False})
+    cluster = estimate_minutes(md, dock, {"include": True, "frames": "cluster", "n_frames": 5})
+    single = estimate_minutes(md, dock, {"include": True, "frames": "single"})
+    assert off < single < cluster
+    # And an absent block behaves like a bundle built before the stage existed.
+    assert estimate_minutes(md, dock) == off

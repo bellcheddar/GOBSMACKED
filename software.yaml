@@ -105,6 +105,22 @@ software:
     doi: 10.1021/acs.jctc.3c00039
     reference: Boothroyd et al. 2023, Journal of Chemical Theory and Computation
   - stage: Run
+    tool: Boltz-2
+    role: Affinity head scored on the relaxed complex, its diffusion module bypassed
+    licence: MIT
+    repo: https://github.com/jwohlwend/boltz
+    doi: 10.1101/2025.06.14.659707
+    reference: Passaro et al. 2025, bioRxiv
+  - stage: Run
+    tool: Boltzina
+    role: >-
+      The pattern followed, not a dependency: an external pose scored by Boltz-2's
+      affinity head with the structure module omitted
+    licence: MIT
+    repo: https://github.com/ohuelab/Boltzina
+    doi: 10.48550/arXiv.2508.17555
+    reference: Furui and Ohue 2025, arXiv
+  - stage: Run
     tool: MDTraj
     role: Trajectory analysis, in the bundle and on the server
     licence: LGPL-2.1

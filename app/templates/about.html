@@ -43,17 +43,25 @@
         <!-- Lane 2: Run, on your GPU -->
         <rect x="10" y="212" width="1220" height="118" rx="6" fill="#2c3a50" stroke="#3a4a63"/>
         <text x="24" y="234" fill="#9fb0c7" font-size="12">Run &middot; your machine, GPU, pixi</text>
+        {# Six boxes in the width that held five, so the pitch is 199 rather than
+           240: 24 + 5 x 199 + 176 = 1195, inside the 1220 lane. Affinity is drawn
+           in --ice like its panel on the results page, and its box is the only
+           one on this lane a campaign can switch off. #}
         {% set run = [
-          ('Fold', 'ESMFold, or skipped'),
-          ('Prep', 'PDBFixer, RDKit'),
-          ('Dock', 'PandaDock hybrid'),
-          ('MD', 'OpenMM, OpenFF'),
-          ('Summarise', 'MDTraj')] %}
-        {% for name, tools in run %}
-        <g transform="translate({{ 24 + loop.index0 * 240 }}, 248)">
-          <rect width="216" height="66" rx="4" fill="#243044" stroke="#3a4a63"/>
-          <text x="14" y="26" fill="#e8edf5" font-size="14" font-weight="600">{{ name }}</text>
-          <text x="14" y="46" fill="#9fb0c7" font-size="11">{{ tools }}</text>
+          ('Fold', 'ESMFold, or skipped', false),
+          ('Prep', 'PDBFixer, RDKit', false),
+          ('Dock', 'PandaDock hybrid', false),
+          ('MD', 'OpenMM, OpenFF', false),
+          ('Affinity', 'Boltz-2, optional', true),
+          ('Summarise', 'MDTraj', false)] %}
+        {% for name, tools, optional in run %}
+        <g transform="translate({{ 24 + loop.index0 * 199 }}, 248)">
+          <rect width="176" height="66" rx="4" fill="#243044"
+                stroke="{{ '#43607a' if optional else '#3a4a63' }}"
+                stroke-dasharray="{{ '4 3' if optional else 'none' }}"/>
+          <text x="12" y="26" fill="{{ '#8fd6ff' if optional else '#e8edf5' }}"
+                font-size="14" font-weight="600">{{ name }}</text>
+          <text x="12" y="46" fill="#9fb0c7" font-size="11">{{ tools }}</text>
         </g>
         {% endfor %}
 

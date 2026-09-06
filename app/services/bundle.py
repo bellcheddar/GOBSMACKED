@@ -158,7 +158,7 @@ def residues_near_ligand(structure_path: str | Path, ccd: str,
 # ---------------------------------------------------------------------------
 
 def build_campaign(job_id: str, protein: dict, ligand: dict, pocket: dict,
-                   reference: dict, docking: dict, md: dict,
+                   reference: dict, docking: dict, md: dict, affinity: dict | None = None,
                    owner_token: str = "", title: str = "") -> dict:
     """Assemble campaign.yaml's content. Key order is the order in the file."""
     return {
@@ -206,6 +206,19 @@ def build_campaign(job_id: str, protein: dict, ligand: dict, pocket: dict,
             "production_ps": int(md.get("production_ps", 1000)),
             "frame_interval_ps": int(md.get("frame_interval_ps", 10)),
             "platform": md.get("platform", "auto"),
+        },
+        # On by default: an affinity reading is the one number in the archive a
+        # medicinal chemist asks for first, and the marginal cost is a few
+        # minutes once the checkpoint is on the machine. `include: false` is
+        # written out rather than omitted, so a campaign always says what it
+        # asked for and an archive with no affinity block can be told apart
+        # from one built before the stage existed.
+        "affinity": {
+            "include": bool((affinity or {}).get("include", True)),
+            "frames": (affinity or {}).get("frames", "cluster"),
+            "n_frames": int((affinity or {}).get("n_frames", 5)),
+            "window_fraction": float((affinity or {}).get("window_fraction", 0.2)),
+            "recycling_steps": int((affinity or {}).get("recycling_steps", 3)),
         },
     }
 

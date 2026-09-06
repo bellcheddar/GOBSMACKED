@@ -350,7 +350,8 @@ def api_bundle():
     campaign = bundle_svc.build_campaign(
         job_id=job_id, protein=protein, ligand=ligand, pocket=pocket,
         reference=reference, docking=payload.get("docking") or {},
-        md=payload.get("md") or {}, owner_token=owner_token, title=title,
+        md=payload.get("md") or {}, affinity=payload.get("affinity") or {},
+        owner_token=owner_token, title=title,
     )
 
     structure_name = protein.get("structure_name")
@@ -397,7 +398,7 @@ def api_bundle():
                f'&& ./run.sh')
 
     md_cfg = campaign["md"]
-    minutes = estimate_minutes(md_cfg, campaign["docking"])
+    minutes = estimate_minutes(md_cfg, campaign["docking"], campaign.get("affinity") or {})
     return jsonify({
         "job_id": job_id,
         "owner_token": owner_token,
@@ -409,20 +410,31 @@ def api_bundle():
         "command": command,
         "pixi_install": "curl -fsSL https://pixi.sh/install.sh | bash",
         "needs": "curl and bash. run.sh installs pixi itself if you have not got it.",
-        "results_path": f"run_bundle_{job_id}/results/results.tar.gz",
+        "results_path": f"run_bundle_{job_id}/results.tar.gz",
         "estimate_minutes": minutes,
     })
 
 
-def estimate_minutes(md_cfg: dict, docking: dict) -> int:
+def estimate_minutes(md_cfg: dict, docking: dict, affinity: dict | None = None) -> int:
     """A rough wall clock for one consumer GPU, so the command is a decision.
 
     Measured on an M1 Max, which is slower than the CUDA cards this is aimed at:
     docking 16 minutes and MD 54 minutes for 500 ps of a 253-residue domain.
     Rounded, and deliberately not presented to the minute.
+
+    The affinity term is a prior rather than a measurement, and it is dominated
+    by the MSA on a target that has not been seen before: the trunk is one pass
+    per pose and the affinity head is cheap. It is counted only when the
+    campaign asks for the stage, or every estimate on the page is minutes too
+    long for the runs that turned it off.
     """
     production = float(md_cfg.get("production_ps", 1000) or 0)
     equilibration = float(md_cfg.get("equilibration_ps", 100) or 0)
     md_minutes = (production + equilibration) / 1000.0 * 60.0
     dock_minutes = 10 if docking.get("mode") != "flex" else 30
-    return int(round(dock_minutes + md_minutes + 5))
+    affinity_minutes = 0.0
+    if (affinity or {}).get("include", False):
+        frames = 1 if (affinity or {}).get("frames") == "single" else int(
+            (affinity or {}).get("n_frames", 5) or 5)
+        affinity_minutes = 4.0 + 0.5 * (frames + 1)      # +1 for the pre-MD pose
+    return int(round(dock_minutes + md_minutes + affinity_minutes + 5))

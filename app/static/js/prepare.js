@@ -14,6 +14,7 @@
     reference: null,      // {pdb_id, chain, ligand_ccd}
     references: [],
     visibility: "public",
+    frameMode: "cluster",
     numbering: {},        // sequence position -> structure residue number
     inverse: {},          // structure residue number -> sequence position
   };
@@ -622,6 +623,10 @@
         production_ps: parseInt($("production").value, 10),
         frame_interval_ps: parseInt($("frame-interval").value, 10),
       },
+      affinity: {
+        include: $("affinity").checked,
+        frames: state.frameMode,
+      },
     }).then(function (data) {
       renderBundle(data);
     }).catch(function (err) {
@@ -771,6 +776,31 @@
           ? "This run appears in the Runs tab for anyone."
           : "Only people with the run link and the owner key can see it.";
       });
+    });
+
+    $("frame-mode").querySelectorAll("button").forEach(function (button) {
+      button.addEventListener("click", function () {
+        state.frameMode = button.getAttribute("data-value");
+        $("frame-mode").querySelectorAll("button").forEach(function (other) {
+          other.setAttribute("aria-pressed", other === button ? "true" : "false");
+        });
+        $("frame-mode-note").textContent = state.frameMode === "cluster"
+          ? "Five frames across the last fifth of the run, reported as a mean and a spread."
+          : "The last frame alone: one number, and nothing to say how settled it is.";
+        refreshRun();
+      });
+    });
+
+    $("affinity").addEventListener("change", function () {
+      // The frame choice means nothing with affinity off, and a live control
+      // that does nothing is worse than one that is visibly unavailable.
+      var on = $("affinity").checked;
+      $("frame-mode").setAttribute("aria-disabled", on ? "false" : "true");
+      $("affinity-note").textContent = on
+        ? "Scores the docked pose and the relaxed complex, and reports both. Adds a few "
+          + "minutes and a one-off download."
+        : "No affinity prediction: the scorecard measures agreement with the crystal only.";
+      refreshRun();
     });
 
     ["dock-mode", "production", "num-poses", "frame-interval"].forEach(function (id) {

@@ -153,6 +153,32 @@
           <input type="number" id="frame-interval" value="10" min="1">
         </div>
       </div>
+      <div class="row">
+        <div>
+          {# A heading the checkbox does not need, so that this column's first
+             line sits on the same baseline as "Frames scored after MD" beside
+             it. Without it the two halves of one row start at different
+             heights. #}
+          <label>Affinity</label>
+          <label class="check" for="affinity">
+            <input type="checkbox" id="affinity" checked>
+            Predict affinity with Boltz-2
+          </label>
+          <p class="note" id="affinity-note">Scores the docked pose and the relaxed complex, and
+            reports both. Adds a few minutes and a one-off download.</p>
+        </div>
+        <div>
+          <label>Frames scored after MD</label>
+          {# Disabled rather than hidden when affinity is off: a control that
+             vanishes takes its explanation with it. #}
+          <div class="choice" id="frame-mode">
+            <button data-value="cluster" aria-pressed="true">Cluster of 5</button>
+            <button data-value="single" aria-pressed="false">Final frame</button>
+          </div>
+          <p class="note" id="frame-mode-note">Five frames across the last fifth of the run,
+            reported as a mean and a spread.</p>
+        </div>
+      </div>
       <label for="title">Title for the Runs table</label>
       <input type="text" id="title" placeholder="EGFR + erlotinib against 1M17"
              class="example" data-example="EGFR kinase domain + erlotinib">

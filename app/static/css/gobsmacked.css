@@ -17,6 +17,11 @@
   --green:   #7ee2a8;   /* pass, stage complete, mode match */
   --grey:    #9fb0c7;   /* input model, muted text */
   --purple:  #c39cff;   /* optional apo reference */
+  /* Predicted affinity. Not --phos: phosphor means a predicted structure that a
+     crystal is about to judge, and nothing on this page judges this number. Not
+     --amber either: amber means experiment, and there is no experiment here. */
+  --ice:     #8fd6ff;   /* the affinity reading */
+  --ice-dim: #43607a;   /* its spread band, and its gauge track */
   --text:    #e8edf5;
   --muted:   #9fb0c7;
   --grade-a: #7ee2a8;
@@ -324,6 +329,12 @@ input.example:focus, textarea.example:focus { color: var(--text); font-style: no
 .example-banner b { color: var(--phos); font-weight: 600; }
 .example-banner button { flex: 0 0 auto; }
 .example-banner.gone { display: none; }
+
+/* A checkbox that sits on the label's baseline rather than above it, so a
+   ticked option reads as one line of text and not as a control with a caption. */
+label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px; }
+label.check input { width: 15px; height: 15px; accent-color: var(--ice); margin: 0; }
+.choice[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
 
 .choice { display: flex; gap: 8px; margin-top: 8px; }
 .choice button { flex: 1; }
