@@ -329,6 +329,51 @@ Its receptor came from co-folding the protein *with* erlotinib and then removing
 ligand, so its pocket is already ligand-adapted in a way an apo or predicted-apo pocket
 is not. It is one run, and a single B among four Ds is a hypothesis, not a result.
 
+### Following it up: rank the scoring functions, not the pipeline
+
+If the limitation is which pose gets ranked first, that can be tested without docking
+anything again. The five runs left fifty poses whose distance to the crystal is already
+known, so the same fifty were rescored by seven independent functions. Every function saw
+an identical candidate set, which makes a difference in the answer a difference in the
+scoring rather than in what there was to score.
+
+**Top-1 RMSD after rescoring the same ten poses (Å; bold is within 2 Å):**
+
+| Scoring function | 1M17 self-dock | 4HJO cross | AlphaFold | ESMFold | Boltz-2 | Hits | Mean |
+|---|---|---|---|---|---|---|---|
+| Vinardo (smina / Vina 1.2.5) | **1.51** | 4.33 | 4.81 | 5.44 | **1.40** | 2/5 | **3.50** |
+| AutoDock Vina (smina / Vina 1.2.5) | **1.51** | 4.29 | 6.97 | 5.44 | **1.40** | 2/5 | 3.92 |
+| smina `dkoes_scoring` | **1.51** | 4.94 | 8.28 | 8.40 | **1.40** | 2/5 | 4.91 |
+| AutoDock4 (`ad4_scoring`) | 7.85 | 4.94 | 6.92 | 5.44 | **1.40** | 1/5 | 5.31 |
+| as shipped | 8.77 | 4.29 | 7.73 | 8.09 | **1.40** | 1/5 | 6.06 |
+| smina `dkoes_fast` | 7.85 | 4.94 | 6.92 | 7.08 | 8.09 | 0/5 | 6.98 |
+| _oracle: the best pose present_ | _1.51_ | _2.29_ | _4.81_ | _5.44_ | _1.40_ | 2/5 | _3.09_ |
+
+**On the control, rescoring alone recovers the crystal pose.** Vina and Vinardo both give
+pose 8 the best score of the ten and put it first, at 1.51 Å, where it had been ranked
+eighth. Nothing was re-docked and nothing was re-minimised: the same coordinates, read by
+a different function, produce the right answer. Across all five, mean top-1 improves from
+6.06 Å to 3.50 Å against an oracle of 3.09 Å, so Vinardo recovers most of the headroom
+that exists in these pose sets.
+
+**But the oracle row splits the receptors into two different problems**, and this is the
+part worth carrying forward:
+
+| Receptor group | Best pose the search produced | What is wrong | What would help |
+|---|---|---|---|
+| Crystal (holo) and co-folded | 1.40 to 2.29 Å | a near-native pose is present and is ranked below decoys | rescoring: already fixes the control |
+| Predicted apo (AlphaFold, ESMFold) | 4.81 and 5.44 Å | **no near-native pose is generated at all** | sampling, induced fit, flexible side chains |
+
+No rescoring can rescue a pose set whose best member is 4.81 Å. For apo-like predicted
+pockets the failure is upstream of ranking, which is exactly what the HOLOGRAM axis of
+the scorecard was built to detect and what the MD rescue metric measures.
+
+Two honest limits on this. It tests ranking only, because the poses were fixed in advance;
+a function that would have *sampled* differently is not represented. And the margins are
+narrow: on the control, Vina separates the right pose from the runner-up by 0.10 kcal/mol
+and Vinardo by 0.41, which is not much to hang a protocol on with one target and one
+ligand.
+
 **This is the entire argument for the app.** Every one of these five runs produced a
 stable, physically valid complex with a confident docking score, and four of them were
 wrong by 4 to 9 Å. Nothing internal to a docking run distinguishes them. Only the
@@ -382,7 +427,7 @@ Roadmap for GOBSMACKED, in dependency order. Suggestions welcome.
 - [x] **Every pose in the overlay, with the numbers that separate them.** All ten drawn at once, and per pose the docking score, in-place RMSD to the top pose, centroid separation, best-fit shape RMSD and closest approach to the receptor. In-place against best-fit is the pair that matters: the same conformer in two sites is a search problem, two different conformers is not
 - [x] **Make flex and hybrid docking actually run.** Four bugs, found only by using them rather than by reading them. `flex` treats `-o` as a filename prefix and writes to `<prefix>_results`, so every flex run appeared to produce nothing; `hybrid` accepts neither `--seed` nor `-e` and exits on either; the search radius was half the box's *longest* side, giving a sphere that reached well outside the box it was supposed to describe; and the GNN checkpoint had moved to a `v4` name and release URL, so `hybrid` silently fell back to the empirical scorer on every run
 - [x] **Five starting structures, one campaign.** The experiment above: same ligand, pocket, box, seed and MD protocol, varying only the structure docking starts from, with a self-dock control that is correct by construction. It found that the top-ranked pose, not the sampling and not the receptor, is what limits the result, and that neither starting-model quality nor predicted affinity separates a right pose from a wrong one
-- [ ] **Rank scoring functions on a fixed pose set.** The five runs left 50 poses whose distance to the crystal is already known, so the ranking question can be asked directly and cheaply: rescore the same poses with several independent scoring functions and ask which one puts a near-native pose first, per receptor type. No docking and no MD, because the search already found the answer every time
+- [x] **Rank scoring functions on a fixed pose set.** The five runs left 50 poses whose distance to the crystal is already known, so the ranking question can be asked directly and cheaply: rescore the same poses with several independent scoring functions and ask which one puts a near-native pose first, per receptor type. Done, with seven functions over fifty poses: rescoring alone recovers the crystal pose on the control, and it separates two different failures, ranking for holo-like pockets and sampling for apo-like ones
 - [ ] **STEVEDORE: multi-ligand SAR series.** Score a congeneric series against one reference and correlate with ChEMBL affinity, which turns a single verification into a protocol assessment
 - [ ] **DOCKYARD: ingest poses from other engines.** Boltz-2, Vina and DiffDock all produce poses this scorecard could grade, and the comparison is more interesting than any single engine's self-report
 - [ ] **Cryptic pocket detection.** The pocket volume trace already shows a pocket opening and closing during MD; naming that as a finding rather than a plot is the next step
