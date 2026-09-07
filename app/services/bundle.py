@@ -157,9 +157,22 @@ def residues_near_ligand(structure_path: str | Path, ccd: str,
 # The campaign file
 # ---------------------------------------------------------------------------
 
+def fold_block(fold: dict | None) -> dict:
+    """How the receptor is to be produced, when the bundle has to produce one.
+
+    `boltz2` folds the protein together with the ligand and then keeps only the
+    protein. On the five-structure comparison that was the only starting
+    structure whose docked pose came back ranked first, and the only run to
+    grade B; its own predicted ligand pose was 4.5 to 4.8 A out, which is why
+    the pocket is kept and the ligand re-docked into it.
+    """
+    method = str(((fold or {}).get("method") or "esmfold")).lower()
+    return {"method": method if method in ("esmfold", "boltz2") else "esmfold"}
+
+
 def build_campaign(job_id: str, protein: dict, ligand: dict, pocket: dict,
                    reference: dict, docking: dict, md: dict, affinity: dict | None = None,
-                   owner_token: str = "", title: str = "") -> dict:
+                   owner_token: str = "", title: str = "", fold: dict | None = None) -> dict:
     """Assemble campaign.yaml's content. Key order is the order in the file."""
     return {
         "gobsmacked_version": CAMPAIGN_VERSION,
@@ -175,6 +188,7 @@ def build_campaign(job_id: str, protein: dict, ligand: dict, pocket: dict,
             "residue_range": protein.get("residue_range"),
             "family": protein.get("family", "other"),
         },
+        "fold": fold_block(fold),
         "ligand": {
             "name": ligand.get("name", "ligand"),
             "smiles": ligand.get("smiles", ""),

@@ -351,7 +351,7 @@ def api_bundle():
         job_id=job_id, protein=protein, ligand=ligand, pocket=pocket,
         reference=reference, docking=payload.get("docking") or {},
         md=payload.get("md") or {}, affinity=payload.get("affinity") or {},
-        owner_token=owner_token, title=title,
+        owner_token=owner_token, title=title, fold=payload.get("fold") or {},
     )
 
     structure_name = protein.get("structure_name")
@@ -360,6 +360,14 @@ def api_bundle():
         candidate = config.STRUCT_CACHE / structure_name
         if candidate.exists():
             structure_path = str(candidate)
+
+    # Co-folding means the bundle builds its own receptor, so no model is
+    # shipped: the fold stage skips entirely when model_apo.pdb is present, and
+    # sending one would silently turn the option off. The fetched structure is
+    # still what sized the box and picked the pocket residues, which is why it
+    # was fetched at all.
+    if campaign["fold"]["method"] == "boltz2":
+        structure_path = None
 
     try:
         archive = bundle_svc.write_bundle(job_id, campaign, structure_path)
