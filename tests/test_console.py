@@ -184,6 +184,8 @@ def test_no_bundle_file_leaves_its_text_encoding_to_the_locale():
     bundle = Path(__file__).resolve().parents[1] / "bundle_template"
     offenders = []
     for path in sorted(list(bundle.glob("*.py")) + list(bundle.glob("*/*.py"))):
+        if {".pixi", ".venv"} & set(path.parts):    # see the note on the other walk
+            continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -220,7 +222,13 @@ def test_no_subprocess_decodes_output_with_the_locales_encoding():
     offenders = []
     for folder in ("bundle_template", "app"):
         for path in sorted((root / folder).rglob("*.py")):
-            if "__pycache__" in path.parts:
+            # This walk is meant to cover the project's own sources. Building
+            # the bundle environment in place puts a whole Python installation
+            # under bundle_template/.pixi, and the standard library ships files
+            # designed to be unparseable -- lib2to3's bom.py starts with a byte
+            # order mark and raises SyntaxError. The test then fails for a
+            # reason that has nothing to do with the code under test.
+            if {"__pycache__", ".pixi", ".venv", "site-packages"} & set(path.parts):
                 continue
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if not isinstance(node, ast.Call):

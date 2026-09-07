@@ -222,6 +222,9 @@
     <section class="card span-12" id="pose-ranking">
       <h2>Pose ranking</h2>
       {% set dp = card.poses or {} %}
+      {%- set rs = card.rescore or {} %}
+      {%- set rsby = {} %}
+      {%- if rs.ran %}{% for row in rs.rows %}{% set _ = rsby.update({row.pose_id: row}) %}{% endfor %}{% endif %}
       {% if dp.rows %}
       <table class="poses">
         <thead>
@@ -229,6 +232,7 @@
              pose is in the wrong pocket, the wrong way round, or the wrong
              shape, and those have different fixes. #}
           <tr><th>#</th><th>Score</th><th>Vina</th><th>pEC50</th>
+              {% if rs.ran %}<th>{{ rs.function|capitalize }}</th>{% endif %}
               <th>RMSD</th><th>Centre</th><th>Shape</th><th>Contact</th></tr>
         </thead>
         <tbody>
@@ -238,6 +242,11 @@
             <td>{{ '%.2f'|format(r.score) if r.score is not none else '&mdash;'|safe }}</td>
             <td>{{ '%.2f'|format(r.vina_energy) if r.vina_energy is not none else '&mdash;'|safe }}</td>
             <td>{{ '%.2f'|format(r.gnn_pec50) if r.gnn_pec50 is not none else '&mdash;'|safe }}</td>
+            {%- if rs.ran %}
+            {%- set second = rsby.get('pose' ~ r.rank) %}
+            <td class="{{ 'chosen-second' if second and second.rank == 1 }}">
+              {{ '%.2f'|format(second.score) if second and second.score is not none else '&mdash;'|safe }}</td>
+            {%- endif %}
             <td class="{{ 'good' if r.rmsd is not none and r.rmsd <= 2 else '' }}">
               {{ '%.2f'|format(r.rmsd) if r.rmsd is not none else '&mdash;'|safe }}</td>
             <td class="{{ 'good' if r.centroid_distance is not none and r.centroid_distance <= 4 else '' }}">
@@ -258,6 +267,20 @@
         way round. <b>Contact</b> is the closest heavy-atom approach to the receptor;
         under 2.2 A is a clash. Pose 1 went to MD; a highlighted row below it is the pose
         nearest the crystal.</p>
+      {% if rs.ran %}
+      <p class="note"><b>{{ rs.function|capitalize }}</b> is a second scoring function's opinion of
+        these same ten coordinates, re-ranked after the fact. It sampled nothing and moved nothing.
+        {% if rs.agrees %}
+          It agrees that pose 1 is the best of them.
+        {% else %}
+          It would have put <b>{{ rs.top_pose|replace('pose', 'pose ') }}</b> first. Pose 1 went
+          forward regardless: on the five-structure comparison this function beat the shipped
+          ranking on four receptors and lost on the one that actually worked, so promoting its
+          choice would have improved the failures and spoiled the success. The disagreement is
+          shown so the judgement stays with you.
+        {% endif %}
+      </p>
+      {% endif %}
       {% set aff = card.affinity or {} %}
       {% if aff.state == 'ran' %}
       <p class="note">Boltz-2 scored pose 1 alone, before and after MD: see the affinity

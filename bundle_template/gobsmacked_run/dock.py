@@ -29,6 +29,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from . import rescore
+
 # The asset's real name in the release. The old value here was
 # "pandadock_gnn.pt", which is not a file that exists anywhere, so even a
 # correctly downloaded checkpoint would not have been found in the cache.
@@ -104,9 +106,22 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
         raise RuntimeError("PandaDock wrote no complex for the top pose.")
     shutil.copy(top_complex, results / "complex_pose1.pdb")
 
+    # A second function's opinion of the same ten poses, written beside the
+    # scores it is second-guessing. It changes nothing downstream: pose 1 stays
+    # pose 1 and is what MD relaxes and the scorecard grades.
+    second = rescore.run(receptor, poses_dir / "poses.sdf",
+                         poses_dir / "rescore.csv", log)
+    if second.get("ran") and not second.get("agrees"):
+        warnings.append(
+            f"A second scoring function ({second['function']}) would have ranked pose "
+            f"{second['top_pose']} first rather than pose 1. The pipeline carried pose 1 "
+            f"forward regardless; both sets of scores are in poses/.")
+    elif not second.get("ran"):
+        log(f"rescore: skipped, {second.get('reason')}")
+
     best = scores[0]["score"] if scores else None
     return {"warnings": warnings, "mode": mode, "poses": len(scores),
-            "best_score": best,
+            "best_score": best, "rescore": second,
             "headline": f"{len(scores)} poses, best {best} kcal/mol" if scores else "no poses"}
 
 

@@ -12,6 +12,7 @@ can be reported in the response that caused it rather than found in a log.
 
 from __future__ import annotations
 
+import csv
 import dataclasses
 import json
 import shutil
@@ -387,6 +388,10 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
     # one. Measuring the rest against the crystal is what separates a scoring
     # failure from a sampling one, and those have different fixes.
     pose_fit = fits.get("pose1") or {}
+    # The second scoring function's opinion of the same ten poses, when the run
+    # produced one. Read here rather than recomputed: it was measured on the
+    # machine that did the docking, and the server has no docking engine.
+    card["rescore"] = _read_rescore(results.root / "poses" / "rescore.csv")
     card["poses"] = poses_svc.overlay(
         results.root / "poses" / "poses.sdf",
         _read_scores(results.root / "poses" / "scores.csv"),
@@ -495,6 +500,40 @@ def classify_modes(family: str, protein: dict, sequence: str, md_final, referenc
 
     out["verdict"] = modes_svc.compare_modes(out.get("predicted") or {}, out.get("reference"))
     return out
+
+
+def _read_rescore(path: Path) -> dict[str, Any]:
+    """poses/rescore.csv, or an empty block for the archives written before it.
+
+    Absent is the normal case for anything run before the second opinion
+    existed, and for any run where it declined, so this never warns.
+    """
+    if not path.exists():
+        return {"ran": False}
+    rows = []
+    try:
+        with open(path, encoding="utf-8", newline="") as fh:
+            reader = csv.DictReader(fh)
+            column = next((c for c in (reader.fieldnames or []) if c.endswith("_kcal_per_mol")), None)
+            for row in reader:
+                rows.append({"pose_id": row.get("pose_id"),
+                             "score": _as_float(row.get(column)) if column else None,
+                             "rank": _as_int(row.get("rank"))})
+    except (OSError, csv.Error):
+        return {"ran": False}
+    if not rows:
+        return {"ran": False}
+    function = (column or "").removesuffix("_kcal_per_mol") or "a second function"
+    top = min(rows, key=lambda r: r["rank"] if r["rank"] else 999)
+    return {"ran": True, "function": function, "rows": rows,
+            "top_pose": top["pose_id"], "agrees": top["pose_id"] == "pose1"}
+
+
+def _as_float(value) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _read_scores(path: Path) -> list[dict]:

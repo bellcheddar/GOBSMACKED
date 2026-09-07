@@ -33,7 +33,8 @@ REQUIRED = [
     "traj/summary.json",
 ]
 
-OPTIONAL = ["plddt.json", "traj/traj.dcd", "logs/run.log"]
+OPTIONAL = ["plddt.json", "traj/traj.dcd", "logs/run.log",
+            "poses/rescore.csv", "cofold/cofold_ligand.sdf"]
 
 STAGES = ["fold", "prep", "dock", "md", "summarise"]
 

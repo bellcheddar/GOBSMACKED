@@ -111,6 +111,24 @@ boltz = ">=2.2"
 # answer with it set before relying on it.
 KMP_DUPLICATE_LIB_OK = "TRUE"
 
+# --- Pose ranking, second opinion -------------------------------------------
+# smina reads a PDB receptor and an SDF of poses directly and scores every pose
+# in one invocation, so re-ranking ten poses costs seconds and no conversion.
+#
+# It gets its own environment, not a line in [dependencies]. smina pins
+# libboost >=1.82,<1.83 and the default environment already carries a different
+# boost through openmmforcefields and AmberTools, so the two cannot share a
+# solve. Worth recording how that failure presented: `pixi lock` printed the
+# conflict and still EXITED 0, and the lock file was left untouched. The check
+# that caught it was grepping the lock for smina, not the return code.
+#
+# Why a second opinion at all: docking into the crystal a ligand was taken from
+# ranked the 1.51 A pose EIGHTH of ten, behind an 8.77 A decoy. Rescoring those
+# same ten coordinates with Vinardo put it first. The search had found the
+# answer every time; the ranking had not chosen it.
+[feature.rescore.dependencies]
+smina = "*"
+
 [environments]
 # pixi run gobsmacked           dock and MD, the smallest install
 # pixi run -e fold gobsmacked   adds ESMFold, for a bundle with no model
@@ -136,6 +154,7 @@ fold = { features = ["fold"] }
 # no-default-feature is load-bearing, not tidiness: without it this environment
 # inherits [dependencies] -- OpenMM, openff-toolkit, numpy 2 -- and cannot solve.
 affinity = { features = ["affinity"], no-default-feature = true }
+rescore = { features = ["rescore"], no-default-feature = true }
 
 [tasks]
 gobsmacked = "python run.py"

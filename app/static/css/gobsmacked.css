@@ -617,3 +617,8 @@ pre.cmd {
   .deck { max-width: none; padding: 0 12px; }
   .card { break-inside: avoid; }
 }
+
+/* The second scoring function's own first choice. Deliberately a different
+   accent from .chosen: the pipeline carried pose 1 forward, and a reader must
+   be able to see at a glance that these two rows are not the same claim. */
+.poses td.chosen-second { color: var(--ice); font-weight: 600; }

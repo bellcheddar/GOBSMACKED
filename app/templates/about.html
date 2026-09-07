@@ -136,6 +136,21 @@
       protein chain in the output &mdash; the run falls back to ESMFold and says so, because an
       hour spent with nothing to dock is the worse outcome.</p>
 
+    <h3>A second opinion on the pose ranking</h3>
+    <p class="note">The dock stage re-scores its own ten poses with <b>Vinardo</b>, a second
+      scoring function, and reports where the two disagree. It re-ranks coordinates that already
+      exist: nothing is sampled, nothing is moved, and pose 1 still goes to MD and is still what
+      the scorecard grades.</p>
+    <p class="note">It is there because the search turned out to be better than the ranking.
+      Docking a ligand back into the crystal it was taken from &mdash; the cleanest control there
+      is &mdash; ranked the 1.51 &#8491; pose <b>eighth of ten</b>, behind an 8.77 &#8491; decoy.
+      Re-scoring those same ten coordinates put it first. Across five receptors a near-native pose
+      was in the list every single time.</p>
+    <p class="note">The second opinion is deliberately not acted on. On those five receptors
+      Vinardo beat the shipped ranking on four and lost on the one that actually worked, so
+      promoting its choice would have improved the failures and spoiled the success. Both columns
+      are shown instead, and the judgement stays with the reader.</p>
+
     <h3>A metric that was removed</h3>
     <p class="note"><b>MD rescue</b> &mdash; pocket Ca RMSD to the crystal before MD minus after
       &mdash; was graded here at weight 10, on the induced-fit claim that relaxation should recover
