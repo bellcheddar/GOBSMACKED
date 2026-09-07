@@ -67,7 +67,7 @@ def _pocket_note(v, g):
     if g in ("A", "B"):
         return "The pocket backbone matches the crystal, so the ligand had somewhere correct to bind."
     if g == "C":
-        return "The pocket backbone has moved. Check whether the model was apo-like and whether MD closed the gap (see rescue)."
+        return "The pocket backbone has moved. Check whether the model was apo-like; note that MD has never been observed to close this gap."
     return "The pocket backbone is wrong. A ligand RMSD measured against it means little: fix the model before reading anything else."
 
 
@@ -100,33 +100,25 @@ def _stability_note(v, g):
         return "The ligand drifted during the run. Extend production before drawing conclusions from the final frame."
     return "The ligand left its docked pose. Either the pose was wrong or the parameters are: check the ligand force field warnings in the run log."
 
-
-def _rescue_note(v, g):
-    if v is None:
-        # Almost always the gate rather than a missing input: the starting
-        # pocket was already closer to the crystal than MD settles, so there was
-        # no induced fit to recover. Saying "not measured" would read as a
-        # failure of the pipeline instead of a question that did not apply.
-        return ("Not scored: the starting pocket was already closer to the crystal "
-                "than MD relaxes to, so there was no induced fit left to recover. "
-                "Its weight is shared across the other metrics.")
-    if g == "A":
-        return "MD moved the pocket toward the crystal: induced fit was recovered from an apo-like start."
-    if g == "B":
-        return "MD improved the pocket slightly."
-    if g == "C":
-        return "MD left the pocket where it started."
-    return "MD moved the pocket away from the crystal. Check restraint release and whether the box is large enough."
-
-
+# The weights sum to 100 with validity, so each reads as a percentage of the
+# composite. When MD rescue was removed its 10 was absorbed by the five
+# survivors in proportion (30:20:15:10:10 -> 34:22:17:11:11), which leaves every
+# metric's importance RELATIVE to the others exactly where it was. Redistributing
+# it by preference would have been a second decision hiding inside the first.
 METRICS = [
-    Metric("ligand_rmsd", "Ligand RMSD", "A", 30, (1.0, 2.0, 3.0, 4.0), True, _ligand_note),
-    Metric("plip_jaccard", "PLIP overlap", "", 20, (0.75, 0.55, 0.40, 0.25), False, _jaccard_note),
-    Metric("pocket_ca_rmsd", "Pocket Ca RMSD", "A", 15, (0.8, 1.2, 1.8, 2.5), True, _pocket_note),
-    Metric("chi1_agreement", "chi1 agreement", "", 10, (0.85, 0.70, 0.55, 0.40), False, _chi1_note),
-    Metric("md_drift", "Drift, last 200 ps", "A", 10, (0.5, 1.0, 1.5, 2.5), True, _stability_note),
-    Metric("rescue", "MD rescue", "A", 10, (0.5, 0.2, 0.0, -0.3), False, _rescue_note),
+    Metric("ligand_rmsd", "Ligand RMSD", "A", 34, (1.0, 2.0, 3.0, 4.0), True, _ligand_note),
+    Metric("plip_jaccard", "PLIP overlap", "", 22, (0.75, 0.55, 0.40, 0.25), False, _jaccard_note),
+    Metric("pocket_ca_rmsd", "Pocket Ca RMSD", "A", 17, (0.8, 1.2, 1.8, 2.5), True, _pocket_note),
+    Metric("chi1_agreement", "chi1 agreement", "", 11, (0.85, 0.70, 0.55, 0.40), False, _chi1_note),
+    Metric("md_drift", "Drift, last 200 ps", "A", 11, (0.5, 1.0, 1.5, 2.5), True, _stability_note),
 ]
+
+# MD rescue was here, weighted 10, graded on (+0.5, +0.2, 0.0, -0.3). It was
+# removed after seven runs in which MD moved the pocket away from the crystal
+# seven times (binomial p 0.0078), with no starting distance in reach of a real
+# structure where it could go the other way. It is still computed and still
+# shown on the card, as an observation about the run rather than a grade.
+# The composite normalises by the weights that remain, so nothing else changed.
 
 VALIDITY_WEIGHT = 5.0
 

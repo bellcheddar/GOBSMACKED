@@ -77,7 +77,7 @@ def test_missing_metrics_renormalise_rather_than_score_zero():
     without_dynamics = {k: v for k, v in PERFECT.items() if k not in ("md_drift", "rescue")}
     card = scorecard.composite(without_dynamics, ALL_VALID)
     assert card["score"] == 100.0
-    assert set(card["unmeasured"]) == {"Drift, last 200 ps", "MD rescue"}
+    assert set(card["unmeasured"]) == {"Drift, last 200 ps"}
 
 
 def test_every_metric_carries_a_sentence():
@@ -88,58 +88,54 @@ def test_every_metric_carries_a_sentence():
 
 
 def test_weights_sum_to_one_hundred():
+    """So each weight reads as a percentage of the composite, which is how the
+    About page presents them. Removing a metric must redistribute, not leave a
+    hole that makes every printed weight a lie."""
     total = sum(m.weight for m in scorecard.METRICS) + scorecard.VALIDITY_WEIGHT
     assert total == 100
 
 
-# --- the rescue gate ---------------------------------------------------------
-# MD relaxes a pocket to its own equilibrium distance from the crystal, measured
-# at 0.93 to 1.65 A across five EGFR runs whose starts spanned 0.00 to 1.53 A.
-# A run starting inside that window can only move away, so its rescue is negative
-# by construction and the metric grades the input rather than the relaxation.
+def test_removing_rescue_left_the_others_in_the_same_proportion():
+    """The freed weight was absorbed proportionally, not by preference.
 
-def test_rescue_is_not_scored_when_there_was_nothing_to_recover():
-    """The five real runs, and the one number each of them produced.
-
-    Every one of them started closer to the crystal than MD settles, and every
-    one of them scored F or D on a metric that could not have gone the other way.
+    Original 30:20:15:10:10 across the five survivors. Any redistribution that
+    changed their relative importance would be a second, unstated decision.
     """
-    from app.services.dynamics import rescue
-    measured = [(0.000, 0.928), (1.528, 1.622), (0.908, 1.651),
-                (0.991, 1.478), (0.944, 1.425)]
-    assert [rescue(a, b) for a, b in measured] == [None] * 5
+    before = {"ligand_rmsd": 30, "plip_jaccard": 20, "pocket_ca_rmsd": 15,
+              "chi1_agreement": 10, "md_drift": 10}
+    now = {m.key: m.weight for m in scorecard.METRICS}
+    old_total, new_total = sum(before.values()), sum(now.values())
+    for key, was in before.items():
+        assert abs(now[key] / new_total - was / old_total) < 0.01, key
 
 
-def test_rescue_is_scored_when_the_start_is_beyond_the_attractor():
-    from app.services.dynamics import rescue
-    assert rescue(1.766, 1.450) == 0.316           # a homology start, recovered
-    assert rescue(3.000, 1.500) == 1.500           # a genuinely apo start
+# --- MD rescue is reported, not graded ---------------------------------------
 
+def test_rescue_takes_no_part_in_the_score():
+    """Removed from METRICS after seven runs in which MD never once helped.
 
-def test_the_gate_is_the_start_not_the_outcome():
-    """A start beyond the attractor is scored even when MD made it worse.
-
-    The gate asks whether the question applies, never whether the answer is
-    flattering. Gating on the result instead would only ever report successes.
-    """
-    from app.services.dynamics import rescue
-    assert rescue(2.000, 2.400) == -0.4
-
-
-def test_an_unscored_rescue_gives_its_weight_away_rather_than_scoring_zero():
-    """The distinction that matters: not measured is not the same as failed.
-
-    Same run twice, once with rescue graded F and once not applicable. Dropping
-    it must raise the composite, because a metric that cannot be scored takes its
-    weight out of the mean instead of contributing zero.
+    The value is still computed, so the guard is that changing it cannot move
+    the composite by even a rounding step.
     """
     from app.services import scorecard as sc
+    assert "rescue" not in {m.key for m in sc.METRICS}
     values = {"ligand_rmsd": 1.25, "plip_jaccard": 0.67, "pocket_ca_rmsd": 1.43,
               "chi1_agreement": 0.71, "md_drift": 0.10}
     validity = {k: True for k in sc.VALIDITY_CHECKS}
-    graded_f = sc.composite({**values, "rescue": -0.48}, validity)
-    gated = sc.composite({**values, "rescue": None}, validity)
-    assert graded_f["score"] < gated["score"]
-    assert "MD rescue" in gated["unmeasured"]
-    assert "MD rescue" not in graded_f["unmeasured"]
-    assert gated["measured"] == graded_f["measured"] - 10
+    base = sc.composite(values, validity)["score"]
+    for pretend in (-2.0, -0.48, 0.0, 0.9):
+        assert sc.composite({**values, "rescue": pretend}, validity)["score"] == base
+    assert "MD rescue" not in base_labels(sc.composite(values, validity))
+
+
+def base_labels(card):
+    return [m["label"] for m in card["metrics"]]
+
+
+def test_the_measurement_survives_even_though_the_grade_did_not():
+    """Dropping the metric must not drop the number: the card still says what
+    MD did to the pocket, it just no longer scores it."""
+    from app.services.dynamics import rescue
+    assert rescue(0.944, 1.425) == -0.481          # run 5, as measured
+    assert rescue(1.766, 1.889) == -0.123          # run 7, as measured
+    assert rescue(None, 1.4) is None

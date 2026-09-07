@@ -420,11 +420,18 @@ def analyse(row, results: ingest_svc.Results) -> dict[str, Any]:
         "pocket_ca_rmsd": final.get("pocket_ca_rmsd"),
         "chi1_agreement": final.get("chi1_agreement"),
         "md_drift": dynamics.get("drift"),
-        "rescue": dyn_svc.rescue(model_geo.get("pocket_ca_rmsd") or first.get("pocket_ca_rmsd"),
-                                 final.get("pocket_ca_rmsd")),
     }, validity)
     card["scorecard"]["tm_score"] = final.get("tm_score")
     card["scorecard"]["pocket_ca_atoms"] = final.get("pocket_ca_atoms")
+    # Reported beside the score, never inside it: MD moved the pocket away from
+    # the crystal in all seven runs it has been measured on. Both ends are
+    # carried so the card can state the movement rather than only its sign.
+    pocket_before = model_geo.get("pocket_ca_rmsd") or first.get("pocket_ca_rmsd")
+    card["scorecard"]["pocket_shift"] = {
+        "before": pocket_before,
+        "after": final.get("pocket_ca_rmsd"),
+        "rescue": dyn_svc.rescue(pocket_before, final.get("pocket_ca_rmsd")),
+    }
     card["timings"] = {"analysis_s": round(time.time() - started, 1),
                        **(results.manifest.get("timings") or {})}
     card["stages"] = build_stages(card, results)
