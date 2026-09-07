@@ -589,6 +589,16 @@ pre.cmd {
      ordinary laptop window. Those decks are a narrow sidebar beside a main
      column, not a pair of equals, and 1250 is where the sidebar stops fitting. */
   .deck, .deck.wide { grid-template-columns: minmax(0, 1fr); }
+  /* Prepare belongs here too, and was moved down to 900 by the same mistake.
+     Its span-6 panels are a form filled in top to bottom, not a pair of things
+     to compare, so on an ordinary laptop window they stack as they always did.
+     Scoped to .deck.flow: the results deck deliberately keeps its spans down to
+     900, which is what pairs the four viewers there. */
+  .deck.flow { grid-template-columns: minmax(0, 1fr); }
+  .deck.flow > .span-4,
+  .deck.flow > .span-6,
+  .deck.flow > .span-8,
+  .deck.flow > .span-12 { grid-column: 1 / -1; }
 }
 
 /* 900, not 1250. At 1250 a perfectly ordinary laptop window collapsed the whole
@@ -601,7 +611,7 @@ pre.cmd {
    window to itself and two columns are about 420 px each, which is the point
    where a structure viewer stops being worth showing side by side. */
 @media (max-width: 900px) {
-  .deck.results, .deck.flow { grid-template-columns: minmax(0, 1fr); }
+  .deck.results { grid-template-columns: minmax(0, 1fr); }
   .span-4, .span-6, .span-8, .span-12 { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
