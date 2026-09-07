@@ -136,6 +136,23 @@
       protein chain in the output &mdash; the run falls back to ESMFold and says so, because an
       hour spent with nothing to dock is the worse outcome.</p>
 
+    <h3>Why the predicted affinity is not in the score</h3>
+    <p class="note">The <b>affinity</b> stage reports a predicted pIC50 for the docked pose and
+      the relaxed one. It is shown beside the GOBSMACK score and takes no part in it, and that is
+      now a measured decision rather than a principle.</p>
+    <p class="note">Every other graded metric has a crystal structure to be right or wrong about.
+      A predicted affinity has none, so it was tested the only way available: against pose quality.
+      Across five runs whose top-ranked poses spanned 1.40 to 8.77 &#8491; it returned pIC50 6.44
+      to 6.66, and the run with the <i>worst</i> pose scored the <i>highest</i> affinity. Within a
+      single run it does no better: scored on all ten poses of the self-docking control, spanning
+      1.51 to 8.77 &#8491;, it ranked the 8.30 &#8491; pose first and gave the correct 1.51
+      &#8491; pose the same value to three decimal places as the 8.77 &#8491; one. Spearman
+      &rho; against RMSD was <b>+0.26 (p&nbsp;0.48)</b>, where a useful re-ranker needs a negative
+      one.</p>
+    <p class="note">It is a good answer to a different question. It is not a pose-quality signal,
+      it is not used to re-rank anything, and folding it into a score whose entire argument is
+      verification would break that argument.</p>
+
     <h3>A second opinion on the pose ranking</h3>
     <p class="note">The dock stage re-scores its own ten poses with <b>Vinardo</b>, a second
       scoring function, and reports where the two disagree. It re-ranks coordinates that already
