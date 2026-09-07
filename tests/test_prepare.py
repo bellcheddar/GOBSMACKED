@@ -333,3 +333,32 @@ def test_the_estimate_counts_affinity_only_when_it_was_asked_for():
     assert off < single < cluster
     # And an absent block behaves like a bundle built before the stage existed.
     assert estimate_minutes(md, dock) == off
+
+
+# --- co-folding is opt-in and reaches the campaign ---------------------------
+
+def test_cofolding_is_off_unless_asked_for():
+    from app.services.bundle import build_campaign
+    campaign = build_campaign("j", {"sequence": "ACDE"}, {"smiles": "CCO"},
+                              {"center": [0, 0, 0]}, {}, {}, {})
+    assert campaign["fold"] == {"method": "esmfold"}
+
+
+def test_cofolding_reaches_the_campaign_and_the_estimate():
+    from app.services.bundle import build_campaign
+    from app.routes.prepare import estimate_minutes
+    campaign = build_campaign("j", {"sequence": "ACDE"}, {"smiles": "CCO"},
+                              {"center": [0, 0, 0]}, {}, {}, {},
+                              fold={"method": "boltz2"})
+    assert campaign["fold"] == {"method": "boltz2"}
+    md, aff = {"production_ps": 500, "equilibration_ps": 100}, {"include": True, "n_frames": 5}
+    plain = estimate_minutes(md, {"mode": "dock"}, aff, {"method": "esmfold"})
+    cofold = estimate_minutes(md, {"mode": "dock"}, aff, {"method": "boltz2"})
+    assert cofold > plain, "co-folding must show in the wall-clock the user is quoted"
+
+
+def test_the_prepare_page_offers_it():
+    from app import create_app
+    with create_app().test_client() as client:
+        html = client.get("/prepare").get_data(as_text=True)
+    assert 'id="cofold"' in html

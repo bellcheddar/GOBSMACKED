@@ -48,7 +48,7 @@
            in --ice like its panel on the results page, and its box is the only
            one on this lane a campaign can switch off. #}
         {% set run = [
-          ('Fold', 'ESMFold, or skipped', false),
+          ('Fold', 'ESMFold or co-fold', false),
           ('Prep', 'PDBFixer, RDKit', false),
           ('Dock', 'PandaDock hybrid', false),
           ('MD', 'OpenMM, OpenFF', false),
@@ -114,6 +114,27 @@
       that could not be measured drops out and the remaining weights are renormalised, which is
       stated on the card. A validity failure caps the composite at 40. A run with no reference
       structure gets no composite at all: there is nothing to verify it against.</p>
+
+    <h3>Co-folding the receptor</h3>
+    <p class="note">Panel 1 offers to <b>co-fold the receptor with your ligand</b> before docking:
+      Boltz-2 folds the protein and the ligand together, the predicted ligand pose is then
+      discarded, and the ligand is docked again into the pocket that was built around it.</p>
+    <p class="note">It is offered because it was measured. Five runs of one campaign differing
+      only in the structure docking started from &mdash; a crystal, that crystal cross-docked, an
+      AlphaFold model, an ESMFold model and a co-folded model &mdash; produced top-ranked poses of
+      8.77, 4.29, 7.73, 8.09 and <b>1.40 &#8491;</b>. The co-folded one was the only run whose
+      first-ranked pose was the right one, and the only one to grade B.</p>
+    <p class="note">The ligand is thrown away deliberately, and this is the part worth
+      understanding. In the same experiment the co-folded <i>pocket</i> was the closest to the
+      crystal of any starting structure, while Boltz-2's own <i>ligand placement</i> was 4.5 to
+      4.8 &#8491; out. Its protein is better than its pose, so the protein is kept and the pose is
+      re-derived. The discarded prediction is written into the archive as
+      <code>cofold/cofold_ligand.sdf</code>, so it can be looked at rather than taken on trust.</p>
+    <p class="note">It costs about fifteen minutes and needs the GPU machine, and it shares its
+      sequence alignment with the affinity stage so the alignment server is asked once per target
+      rather than twice. If it fails for any reason &mdash; no SMILES, no structure returned, no
+      protein chain in the output &mdash; the run falls back to ESMFold and says so, because an
+      hour spent with nothing to dock is the worse outcome.</p>
 
     <h3>A metric that was removed</h3>
     <p class="note"><b>MD rescue</b> &mdash; pocket Ca RMSD to the crystal before MD minus after

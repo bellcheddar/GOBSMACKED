@@ -44,7 +44,7 @@ ANALYZE_STAGES = ["Fetch", "Annotate", "Fold", "Dock", "MD", "Verify", "Mode"]
 ANALYZE_WAITING = {
     "Fetch": "the structure the bundle started from",
     "Annotate": "the family, from the campaign",
-    "Fold": "whether ESMFold ran or a model was supplied",
+    "Fold": "whether a model was supplied, folded, or co-folded with the ligand",
     "Dock": "poses and scores from the archive",
     "MD": "the trajectory summary",
     "Verify": "the reference named in the campaign",
@@ -516,7 +516,11 @@ def build_stages(card: dict, results: ingest_svc.Results) -> list[dict]:
     timings = manifest.get("timings") or {}
     campaign = results.campaign
     protein = campaign.get("protein") or {}
-    folded = (results.root / "plddt.json").exists()
+    # "The bundle built its own receptor", by either route. plddt.json alone was
+    # the test until co-folding existed, and co-folding writes no pLDDT, so a
+    # co-folded run reported itself as having been handed a model.
+    cofolded = (results.root / "cofold").is_dir()
+    folded = cofolded or (results.root / "plddt.json").exists()
 
     def timing(key: str) -> str:
         v = timings.get(key)
@@ -532,8 +536,12 @@ def build_stages(card: dict, results: ingest_svc.Results) -> list[dict]:
                      else "GPCRdb numbering" if card["modes"].get("family") == "gpcr"
                      else "UniProt features only"))},
         {"name": "Fold", "state": "ready",
-         "text": (f"ESMFold, {timing('fold')}".strip() if folded
-                  else "skipped, a model was supplied")},
+         # Which of the two it was matters more than that it happened: a
+         # co-folded receptor was shaped around this very ligand, and every
+         # number downstream should be read knowing that.
+         "text": (("co-folded with the ligand, Boltz-2" if cofolded else "ESMFold")
+                  + (f", {timing('fold')}" if timing('fold') else "")
+                  ).strip() if folded else "skipped, a model was supplied"},
         {"name": "Dock", "state": "ready",
          "text": f"{(campaign.get('docking') or {}).get('mode', 'hybrid')}"
                  f"{', ' + timing('dock') if timing('dock') else ''}"},

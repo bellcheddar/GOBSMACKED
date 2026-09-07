@@ -419,7 +419,8 @@ def api_bundle():
                f'&& ./run.sh')
 
     md_cfg = campaign["md"]
-    minutes = estimate_minutes(md_cfg, campaign["docking"], campaign.get("affinity") or {})
+    minutes = estimate_minutes(md_cfg, campaign["docking"], campaign.get("affinity") or {},
+                               campaign.get("fold") or {})
     return jsonify({
         "job_id": job_id,
         "owner_token": owner_token,
@@ -436,7 +437,8 @@ def api_bundle():
     })
 
 
-def estimate_minutes(md_cfg: dict, docking: dict, affinity: dict | None = None) -> int:
+def estimate_minutes(md_cfg: dict, docking: dict, affinity: dict | None = None,
+                     fold: dict | None = None) -> int:
     """A rough wall clock for one consumer GPU, so the command is a decision.
 
     Measured on an M1 Max, which is slower than the CUDA cards this is aimed at:
@@ -458,4 +460,9 @@ def estimate_minutes(md_cfg: dict, docking: dict, affinity: dict | None = None) 
         frames = 1 if (affinity or {}).get("frames") == "single" else int(
             (affinity or {}).get("n_frames", 5) or 5)
         affinity_minutes = 4.0 + 0.5 * (frames + 1)      # +1 for the pre-MD pose
-    return int(round(dock_minutes + md_minutes + affinity_minutes + 5))
+    # Co-folding is one Boltz-2 pass with the structure module doing the work,
+    # measured at roughly a quarter of an hour for a 253-residue domain. Its MSA
+    # is shared with the affinity stage rather than paid for twice, so this is
+    # the marginal cost and not the whole of it.
+    fold_minutes = 15.0 if (fold or {}).get("method") == "boltz2" else 0.0
+    return int(round(dock_minutes + md_minutes + affinity_minutes + fold_minutes + 5))

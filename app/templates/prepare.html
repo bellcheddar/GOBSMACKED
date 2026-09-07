@@ -39,6 +39,23 @@
       </div>
       <div id="protein-result" class="small muted" style="margin-top:12px"></div>
       <ul class="warnings" id="protein-warnings"></ul>
+
+      {#- Co-folding replaces the DOCKING receptor only. The fetched structure is
+          still what sizes the box and resolves the pocket residues, so this is a
+          checkbox here rather than a sixth entry in the structure-source
+          priority list, which would have made the two mutually exclusive. -#}
+      <label class="check" style="margin-top:14px">
+        <input type="checkbox" id="cofold">
+        <span>Co-fold the receptor with your ligand first (Boltz-2)</span>
+      </label>
+      <p class="note">Folds the protein and the ligand together, then throws the ligand away and
+        docks it back into the pocket that was built around it. On the five-structure comparison
+        this was the only starting point whose top-ranked pose was the right one (1.40 &#8491; at
+        rank 1, against 4.29 to 8.77 &#8491; for a crystal, an AlphaFold model and an ESMFold
+        model) and the only run to grade B. Its own predicted ligand pose was 4.5 to 4.8 &#8491;
+        out, which is why the pocket is kept and the ligand re-docked rather than believed.
+        Adds roughly 15 minutes to the run and needs the GPU machine. The structure fetched above
+        is still used to pick the pocket and size the box.</p>
     </section>
 
 

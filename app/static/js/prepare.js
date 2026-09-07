@@ -618,6 +618,10 @@
       reference: Object.assign({}, state.reference || {}, {
         apo_pdb_id: ($("reference-apo").value.trim().toUpperCase() || null),
       }),
+      // Panel 1's checkbox, sent as a campaign block rather than a protein
+      // field: it selects how the BUNDLE makes its receptor, which is a
+      // different decision from where the server fetched a structure.
+      fold: { method: $("cofold").checked ? "boltz2" : "esmfold" },
       docking: { mode: $("dock-mode").value, num_poses: parseInt($("num-poses").value, 10) },
       md: {
         production_ps: parseInt($("production").value, 10),
