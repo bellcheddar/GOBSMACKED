@@ -10,6 +10,30 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# One deploy at a time. Two overlapping runs rsync and re-chown the same tree,
+# and there is a window in the middle where the service user cannot write the
+# database: gunicorn is still serving, so every page that touches the DB answers
+# "attempt to write a readonly database" until the last chown lands. That was a
+# real user-visible outage, caused by nothing more exotic than backgrounding a
+# deploy and then starting another.
+#
+# flock -n rather than waiting: a queued second deploy would push whatever the
+# working tree happens to hold whenever the first finishes, which is not what
+# anyone asked for. Refuse and say so.
+LOCKFILE="${TMPDIR:-/tmp}/gobsmacked-deploy.lock"
+exec 9>"$LOCKFILE"
+if command -v flock >/dev/null 2>&1; then
+  flock -n 9 || { echo "Another deploy is already running ($LOCKFILE). Wait for it to finish."; exit 1; }
+else
+  # macOS has no flock(1). shlock is not present either, so fall back to an
+  # atomic mkdir, which is the portable way to do this in POSIX sh.
+  LOCKDIR="${LOCKFILE%.lock}.lockdir"
+  if ! mkdir "$LOCKDIR" 2>/dev/null; then
+    echo "Another deploy is already running ($LOCKDIR). Wait for it, or remove it if it is stale."; exit 1
+  fi
+  trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT
+fi
+
 if [[ -f .env ]]; then set -a; source .env; set +a; fi
 DROPLET_SSH="${DROPLET_SSH:-}"
 DROPLET_PATH="${DROPLET_PATH:-/opt/gobsmacked}"
@@ -27,6 +51,13 @@ echo "==> Syncing to ${DROPLET_SSH}:${DROPLET_PATH}"
 # which macOS's bash 3.2 needs.
 rsync -az --delete ${SSH_OPTS[@]+"${SSH_OPTS[@]}"} \
   --exclude '.venv/' --exclude 'data/' --exclude '__pycache__/' \
+  `# .pixi is a materialised environment, not source. Building the bundle
+   # locally to regenerate its lock file puts 2.2 GB of Python under
+   # bundle_template/, and rsync pushed all of it to a droplet that had 15 GB
+   # left. It also carries broken symlinks (amber.conda, amber.python), which
+   # make the remote chown print errors -- and that chown runs under set -e,
+   # one step before the service restart.` \
+  --exclude '.pixi/' \
   --exclude '*.pyc' --exclude '.git/' --exclude '.env' \
   --exclude 'gobsmacked.db' --exclude 'gobsmacked.db-*' \
   --exclude 'tests/fixtures/_structures/' \
