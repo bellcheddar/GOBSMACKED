@@ -297,9 +297,9 @@ it came from.
 |---|---|---|---|---|---|
 | 1 | **1M17 crystal, self-dock** | **0.00 Å** | **8.77 Å** | 1.51 Å (rank 8) | D 52.8 |
 | 2 | 4HJO crystal, cross-dock | 1.53 Å | 4.29 Å | 2.29 Å (rank 5) | D 50.5 |
-| 3 | AlphaFold DB `AF-P00533-F1` | 2.05 Å | 7.73 Å | 4.81 Å (rank 8) | D 55.0 |
-| 4 | ESMFold, ESM Atlas | 1.83 Å | 8.09 Å | 5.44 Å (rank 9) | D 49.0 |
-| 5 | Boltz-2 co-folded, ligand stripped | 1.28 Å | 1.40 Å | 1.40 Å (rank 1) | B 79.0 |
+| 3 | AlphaFold DB `AF-P00533-F1` | 0.91 Å | 7.73 Å | 4.81 Å (rank 8) | D 55.0 |
+| 4 | ESMFold, ESM Atlas | 0.99 Å | 8.09 Å | 5.44 Å (rank 9) | D 49.0 |
+| 5 | Boltz-2 co-folded, ligand stripped | 0.94 Å | 1.40 Å | 1.40 Å (rank 1) | B 79.0 |
 
 **The control settles it. A perfect receptor produced one of the worst top-ranked
 poses.** Docking erlotinib into its own crystal, with a pocket that is correct by
@@ -314,11 +314,11 @@ of placements, and that speed is bought against exactly this discrimination.
 
 Two secondary results, both of which change how the other numbers should be read:
 
-- **Starting-model quality does not predict pose quality.** With the 0.00 Å point
-  included there is no monotonic relationship down the first two columns: the best
-  possible receptor sits third from the worst on top-ranked pose. Reporting "the model
-  was too rough" would have been a comfortable and wrong conclusion, and four of the five
-  runs on their own would have supported it.
+- **Starting-model quality does not predict pose quality.** Three of these pockets sit
+  within 0.09 Å of each other, at 0.91, 0.94 and 0.99 Å, and produce top-ranked poses of
+  7.73, 1.40 and 8.09 Å. The best possible receptor, at 0.00 Å, produces the worst pose
+  of the five. Reporting "the model was too rough" would have been a comfortable and
+  wrong conclusion, and four of the five runs on their own would have supported it.
 - **The predicted affinity does not separate right poses from wrong ones.** pIC50 ranged
   over 6.44 to 6.66 across poses spanning 1.4 to 8.8 Å, and the run with the *worst*
   top-ranked pose returned the *highest* affinity of the five. This is the measured
