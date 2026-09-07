@@ -356,15 +356,33 @@ def depth_of(path: Path) -> Optional[int]:
 
 def predict(written: list[tuple[str, Path]], sequence: str, smiles: str,
             msa: dict, cfg: dict, out_dir: Path, log) -> tuple[list[dict], Optional[str]]:
-    """Score every pose, one subprocess per pose, and never raise."""
+    """Score every pose, one subprocess per pose, and never raise.
+
+    "Never raise" was the intent and was not the behaviour. A FileNotFoundError
+    out of `predict_one` propagated all the way out of the stage and killed a run
+    that had already spent six minutes docking and twenty-five in MD, on its
+    fifth pose of six -- exactly the outcome `decline` exists to prevent. The
+    docstring promised something only this try/except delivers.
+
+    An exception is therefore the same event as a non-zero exit: this pose did
+    not score, so the stage declines with the reason. What is deliberately NOT
+    done is skipping the pose and carrying on: a mean pIC50 over "the frames that
+    happened to work" is a different measurement from a mean over the frames that
+    were chosen, and it would not say so on the card.
+    """
     scored: list[dict] = []
     log_path = out_dir / "boltz.log"
+    out_dir.mkdir(parents=True, exist_ok=True)
     log_path.write_text("", encoding="utf-8")
     with bar_for(log, "scoring poses with the Boltz-2 affinity head",
                  total=len(written)) as bar:
         for index, (name, cif) in enumerate(written):
             bar.update(index, note=name.replace("_", " "))
-            result, error = predict_one(name, cif, sequence, smiles, msa, cfg, out_dir, log_path)
+            try:
+                result, error = predict_one(name, cif, sequence, smiles, msa, cfg,
+                                            out_dir, log_path)
+            except Exception as exc:               # noqa: BLE001 - never fatal, by contract
+                return scored, f"scoring {name} raised {type(exc).__name__}: {exc}"
             if error:
                 return scored, error
             scored.append(result)
@@ -391,8 +409,17 @@ def predict_one(name: str, cif: Path, sequence: str, smiles: str, msa: dict,
     # a different call.
     proc = subprocess.run(cmd, capture_output=True, text=True,
                           encoding="utf-8", errors="replace")
-    with open(log_path, "a", encoding="utf-8") as fh:
-        fh.write(f"$ {' '.join(cmd)}\n{proc.stdout}\n{proc.stderr}\n")
+    # The directory is remade rather than assumed. It is created before the loop
+    # starts, and it still went missing between one pose and the next on a real
+    # run: the append then raised FileNotFoundError and took the stage down. A
+    # transcript is not worth losing an hour of docking and MD over, so the
+    # cheap mkdir goes here and the write itself cannot be fatal either.
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write(f"$ {' '.join(cmd)}\n{proc.stdout}\n{proc.stderr}\n")
+    except OSError:
+        pass
     if proc.returncode != 0:
         tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-3:]
         return {}, "boltz failed: " + " / ".join(tail)

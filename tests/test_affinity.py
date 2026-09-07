@@ -8,6 +8,7 @@ a block that ran, a block that says why it did not, and no block at all.
 from __future__ import annotations
 
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -227,6 +228,56 @@ def test_the_first_pose_pays_for_the_msa_and_the_rest_do_not(tmp_path, monkeypat
 
     # And a second call is a no-op rather than a second copy.
     assert stage.capture_msa(tmp_path / "nowhere", after, lambda m: None) == after
+
+
+def test_a_pose_that_raises_declines_the_stage_rather_than_killing_the_run(tmp_path):
+    """The docstring on `predict` said "never raise" and it did.
+
+    On a real run the fifth pose of six raised FileNotFoundError out of
+    predict_one, which propagated through the stage and ended a run that had
+    already paid for docking and MD. `error` and `exception` are the same event
+    to a caller -- this pose did not score -- so they must reach the caller the
+    same way: as a reason, not as a traceback.
+    """
+    calls = []
+
+    def explode(name, *args, **kwargs):
+        calls.append(name)
+        raise FileNotFoundError(2, "No such file or directory", "boltz.log")
+
+    import unittest.mock as mock
+    with mock.patch.object(stage, "predict_one", explode):
+        scored, error = stage.predict(
+            [("pre_md", tmp_path / "a.cif"), ("post_md_0090", tmp_path / "b.cif")],
+            "ACDE", "CCO", {"cached": False}, {}, tmp_path / "affinity",
+            lambda message: None)
+
+    assert scored == []
+    assert error is not None
+    assert "FileNotFoundError" in error and "pre_md" in error
+    # And it stopped at the pose that failed rather than averaging over whichever
+    # of the six happened to survive.
+    assert calls == ["pre_md"]
+
+
+def test_the_transcript_is_not_worth_failing_a_run_over(tmp_path, monkeypatch):
+    """The boltz.log append is a convenience. It went missing mid-run once, and
+    the OSError it raised was fatal; now the directory is remade and a write that
+    still fails is swallowed, because the prediction itself already succeeded."""
+    out_dir = tmp_path / "affinity"
+    (out_dir / "frames").mkdir(parents=True)
+    monkeypatch.setattr(stage.subprocess, "run", lambda *a, **k: types.SimpleNamespace(
+        returncode=0, stdout="", stderr=""))
+    monkeypatch.setattr(stage, "read_prediction", lambda work: {"pic50": 7.0})
+    monkeypatch.setattr(stage, "boltz_command", lambda *a, **k: ["true"])
+
+    # The directory the log lives in is gone by the time the write happens, which
+    # is exactly what the failing run saw.
+    gone = out_dir / "vanished" / "boltz.log"
+    result, error = stage.predict_one("pre_md", tmp_path / "a.cif", "ACDE", "CCO",
+                                      {"cached": True}, {}, out_dir, gone)
+    assert error is None
+    assert result["pic50"] == 7.0 and result["name"] == "pre_md"
 
 
 def test_a_run_with_no_msa_to_capture_carries_on(tmp_path, monkeypatch):
