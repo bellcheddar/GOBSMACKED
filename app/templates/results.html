@@ -124,9 +124,14 @@
       <p class="note">{{ aff.note }}</p>
       {% endif %}
 
+      {#- "Not measured" was accurate when the only way to miss a metric was a
+          missing input. MD rescue can now also be deliberately not asked, when
+          the starting pocket was already closer to the crystal than MD relaxes
+          to, and reading that as a measurement failure would be wrong. -#}
       {% if sc.unmeasured %}
-      <p class="note">Not measured, and left out of the weighted mean:
-        {{ sc.unmeasured|join(', ') }}.</p>
+      <p class="note">Not scored, and left out of the weighted mean:
+        {{ sc.unmeasured|join(', ') }}. The remaining weights are shared out, so
+        this is a smaller card rather than a penalty.</p>
       {% endif %}
     </section>
 

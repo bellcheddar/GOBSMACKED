@@ -103,7 +103,13 @@ def _stability_note(v, g):
 
 def _rescue_note(v, g):
     if v is None:
-        return "Not measured."
+        # Almost always the gate rather than a missing input: the starting
+        # pocket was already closer to the crystal than MD settles, so there was
+        # no induced fit to recover. Saying "not measured" would read as a
+        # failure of the pipeline instead of a question that did not apply.
+        return ("Not scored: the starting pocket was already closer to the crystal "
+                "than MD relaxes to, so there was no induced fit left to recover. "
+                "Its weight is shared across the other metrics.")
     if g == "A":
         return "MD moved the pocket toward the crystal: induced fit was recovered from an apo-like start."
     if g == "B":

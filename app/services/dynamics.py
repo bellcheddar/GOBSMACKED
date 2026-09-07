@@ -97,15 +97,41 @@ def contact_persistence(contacts: dict) -> list[dict]:
             for r, f in zip(residues, fractions)]
 
 
+# Where MD leaves a pocket, relative to the crystal, regardless of where it
+# started. Measured across five runs on EGFR whose starting pockets spanned
+# 0.00 to 1.53 A: the final pockets spanned 0.93 to 1.65 A, mean 1.42. MD adds
+# displacement toward its own force-field equilibrium and the size of that
+# displacement shrinks as the start gets further away (+0.93 A from a 0.00 A
+# start, +0.09 A from a 1.53 A start), which is the signature of an attractor
+# rather than of drift.
+#
+# The consequence for `rescue` is arithmetic: a run starting closer to the
+# crystal than this can only move away, so its rescue is negative by
+# construction. Across those five runs rescue correlated with the STARTING
+# pocket quality at Spearman +0.90 (p 0.037) -- it was grading the input, not
+# the relaxation, and the best possible starting structure scored worst on it.
+RESCUE_ATTRACTOR_A = 1.65
+
+
 def rescue(pocket_rmsd_model: Optional[float],
-           pocket_rmsd_md_final: Optional[float]) -> Optional[float]:
-    """Pocket Ca RMSD-to-reference before MD minus after MD.
+           pocket_rmsd_md_final: Optional[float],
+           attractor_a: float = RESCUE_ATTRACTOR_A) -> Optional[float]:
+    """Pocket Ca RMSD-to-reference before MD minus after MD, when it means anything.
 
     Positive means MD moved the pocket toward the crystal, which is the whole
     induced-fit claim: an ESMFold pocket is apo-like, and the question is
     whether docking plus relaxation recovers the holo shape.
+
+    None when the starting pocket is already at or inside MD's own equilibrium
+    distance, because there is then no induced fit left to recover and the
+    number would grade the starting structure instead. The scorecard drops an
+    unmeasured metric and renormalises the remaining weights, and says so on the
+    card, which is the honest outcome: the question was not applicable, rather
+    than asked and failed.
     """
     if pocket_rmsd_model is None or pocket_rmsd_md_final is None:
+        return None
+    if pocket_rmsd_model < attractor_a:
         return None
     return round(pocket_rmsd_model - pocket_rmsd_md_final, 3)
 

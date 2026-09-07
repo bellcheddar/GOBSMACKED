@@ -90,3 +90,56 @@ def test_every_metric_carries_a_sentence():
 def test_weights_sum_to_one_hundred():
     total = sum(m.weight for m in scorecard.METRICS) + scorecard.VALIDITY_WEIGHT
     assert total == 100
+
+
+# --- the rescue gate ---------------------------------------------------------
+# MD relaxes a pocket to its own equilibrium distance from the crystal, measured
+# at 0.93 to 1.65 A across five EGFR runs whose starts spanned 0.00 to 1.53 A.
+# A run starting inside that window can only move away, so its rescue is negative
+# by construction and the metric grades the input rather than the relaxation.
+
+def test_rescue_is_not_scored_when_there_was_nothing_to_recover():
+    """The five real runs, and the one number each of them produced.
+
+    Every one of them started closer to the crystal than MD settles, and every
+    one of them scored F or D on a metric that could not have gone the other way.
+    """
+    from app.services.dynamics import rescue
+    measured = [(0.000, 0.928), (1.528, 1.622), (0.908, 1.651),
+                (0.991, 1.478), (0.944, 1.425)]
+    assert [rescue(a, b) for a, b in measured] == [None] * 5
+
+
+def test_rescue_is_scored_when_the_start_is_beyond_the_attractor():
+    from app.services.dynamics import rescue
+    assert rescue(1.766, 1.450) == 0.316           # a homology start, recovered
+    assert rescue(3.000, 1.500) == 1.500           # a genuinely apo start
+
+
+def test_the_gate_is_the_start_not_the_outcome():
+    """A start beyond the attractor is scored even when MD made it worse.
+
+    The gate asks whether the question applies, never whether the answer is
+    flattering. Gating on the result instead would only ever report successes.
+    """
+    from app.services.dynamics import rescue
+    assert rescue(2.000, 2.400) == -0.4
+
+
+def test_an_unscored_rescue_gives_its_weight_away_rather_than_scoring_zero():
+    """The distinction that matters: not measured is not the same as failed.
+
+    Same run twice, once with rescue graded F and once not applicable. Dropping
+    it must raise the composite, because a metric that cannot be scored takes its
+    weight out of the mean instead of contributing zero.
+    """
+    from app.services import scorecard as sc
+    values = {"ligand_rmsd": 1.25, "plip_jaccard": 0.67, "pocket_ca_rmsd": 1.43,
+              "chi1_agreement": 0.71, "md_drift": 0.10}
+    validity = {k: True for k in sc.VALIDITY_CHECKS}
+    graded_f = sc.composite({**values, "rescue": -0.48}, validity)
+    gated = sc.composite({**values, "rescue": None}, validity)
+    assert graded_f["score"] < gated["score"]
+    assert "MD rescue" in gated["unmeasured"]
+    assert "MD rescue" not in graded_f["unmeasured"]
+    assert gated["measured"] == graded_f["measured"] - 10
