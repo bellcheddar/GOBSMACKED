@@ -32,6 +32,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
+from . import console
 from .console import bar_for
 
 # ESMFold's memory use grows with sequence length; chunking trades speed for
@@ -150,18 +151,23 @@ def cofold(campaign: dict, sequence: str, work: Path, results: Path,
     # No template here, so the structure module is doing the work rather than
     # being steered, and --use_potentials is left as boltz_command sets it.
     log(f"fold: co-folding {len(sequence)} residues with the ligand, Boltz-2")
-    with bar_for(log, "co-folding the protein and the ligand"):
-        proc = subprocess.run(cmd, capture_output=True, text=True,
-                              encoding="utf-8", errors="replace")
+    # run_with_progress, not subprocess.run. This blocks for about a quarter of
+    # an hour, and the bar only redraws when something calls update: under
+    # subprocess.run it painted "0s" once and then sat there, which reads as a
+    # hang and gets the run killed. On a first co-fold the silence is real work
+    # -- boltz fetches its weights before it prints anything -- and now that
+    # shows as its own line rather than as nothing at all.
+    output, returncode = console.run_with_progress(
+        cmd, log, "co-folding the protein and the ligand", estimate_s=900.0)
     try:
         (out_dir / "boltz.log").write_text(
-            f"$ {' '.join(cmd)}\n{proc.stdout}\n{proc.stderr}\n", encoding="utf-8")
+            f"$ {' '.join(str(c) for c in cmd)}\n{output}\n", encoding="utf-8")
     except OSError:
         pass
 
     predicted = _newest_cif(boltz_work)
-    if proc.returncode != 0 or predicted is None:
-        tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-2:]
+    if returncode != 0 or predicted is None:
+        tail = (output or "").strip().splitlines()[-2:]
         reason = " / ".join(t.strip() for t in tail) or "no structure was written"
         warnings.append(f"Co-folding failed ({reason}); ESMFold was used instead.")
         log(f"fold: co-fold failed, falling back to ESMFold: {reason}")

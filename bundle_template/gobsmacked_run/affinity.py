@@ -35,6 +35,9 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+import types
+
+from . import console
 from .console import bar_for
 
 # Shared with the GNN checkpoint's cache, and for the same reason: an MSA and a
@@ -380,7 +383,7 @@ def predict(written: list[tuple[str, Path]], sequence: str, smiles: str,
             bar.update(index, note=name.replace("_", " "))
             try:
                 result, error = predict_one(name, cif, sequence, smiles, msa, cfg,
-                                            out_dir, log_path)
+                                            out_dir, log_path, bar, index)
             except Exception as exc:               # noqa: BLE001 - never fatal, by contract
                 return scored, f"scoring {name} raised {type(exc).__name__}: {exc}"
             if error:
@@ -393,7 +396,8 @@ def predict(written: list[tuple[str, Path]], sequence: str, smiles: str,
 
 
 def predict_one(name: str, cif: Path, sequence: str, smiles: str, msa: dict,
-                cfg: dict, out_dir: Path, log_path: Path) -> tuple[dict, Optional[str]]:
+                cfg: dict, out_dir: Path, log_path: Path,
+                bar=None, index: float = 0.0) -> tuple[dict, Optional[str]]:
     yaml_path = out_dir / "frames" / f"{name}.yaml"
     threshold = float(cfg.get("template_threshold_a", DEFAULT_THRESHOLD_A)
                       or DEFAULT_THRESHOLD_A)
@@ -407,8 +411,13 @@ def predict_one(name: str, cif: Path, sequence: str, smiles: str, msa: dict,
     # UTF-8: a progress bar's box characters raised UnicodeDecodeError and took
     # the stage down after MD had already run. Same root cause as the log crash,
     # a different call.
-    proc = subprocess.run(cmd, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace")
+    # Live, not blocking. The bar around this loop advances once per POSE, and a
+    # pose is six to seventeen minutes, so between ticks the display froze for
+    # long enough to look dead. This one shows boltz's own newest line and a
+    # clock that moves, inside the pose bar rather than instead of it.
+    output, returncode = console.run_with_progress(
+        cmd, None, "", bar=bar, done=index)
+    proc = types.SimpleNamespace(returncode=returncode, stdout=output, stderr="")
     # The directory is remade rather than assumed. It is created before the loop
     # starts, and it still went missing between one pose and the next on a real
     # run: the append then raised FileNotFoundError and took the stage down. A

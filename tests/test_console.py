@@ -264,3 +264,58 @@ def test_a_terminal_that_cannot_encode_the_message_still_gets_a_line():
     console = con.Console(stream=stream)
     console.write("pocket volume 412 Å³")
     assert "pocket volume 412" in stream.getvalue()
+
+
+# --- a long subprocess must not look dead ------------------------------------
+
+def test_a_blocking_child_still_moves_the_display():
+    """The bar redraws when something calls update, and nothing does while
+    subprocess.run blocks. Co-folding blocks for about a quarter of an hour and
+    a Boltz-2 pose for six to seventeen minutes; both painted "0s" once and then
+    sat there, which is what a hang looks like."""
+    import sys, time
+    from gobsmacked_run import console as c
+
+    script = "import sys,time\n" + "".join(
+        f"print('step {i}', flush=True); time.sleep(0.2)\n" for i in range(5))
+    seen = []
+
+    class Bar:
+        def update(self, *a, **k):
+            seen.append((time.time(), k.get("note", "")))
+
+    out, rc = c.run_with_progress([sys.executable, "-c", script], None, "probe", bar=Bar())
+    notes = [n for _, n in seen if n]
+    assert rc == 0
+    assert len(set(notes)) > 1, "the note never changed, so the display was frozen"
+    assert seen[-1][0] - seen[0][0] > 0.4, "the loop did not tick over time"
+    assert "step 4" in out
+
+
+def test_it_reports_the_childs_exit_code_rather_than_raising():
+    """A non-zero exit is the caller's to interpret: co-folding falls back to
+    ESMFold on one, and rescoring just drops a column."""
+    import sys
+    from gobsmacked_run import console as c
+
+    class Bar:
+        def update(self, *a, **k): pass
+
+    _, rc = c.run_with_progress([sys.executable, "-c", "raise SystemExit(3)"],
+                                None, "probe", bar=Bar())
+    assert rc == 3
+
+
+def test_given_a_bar_it_does_not_open_a_second_one():
+    """Two writers on one terminal line erase each other. The affinity stage
+    already holds a bar counting poses when it calls this."""
+    import ast, inspect
+    from gobsmacked_run import console as c
+
+    source = inspect.getsource(c.run_with_progress)
+    tree = ast.parse(source.lstrip())
+    withs = [n for n in ast.walk(tree) if isinstance(n, ast.With)]
+    guarded = [n for n in ast.walk(tree)
+               if isinstance(n, ast.If) and "bar" in ast.unparse(n.test)]
+    assert withs, "it should still be able to open its own bar"
+    assert guarded, "opening one must be conditional on not being given one"

@@ -452,3 +452,56 @@ def bar_for(log: Any, label: str, total: Optional[float] = None,
     if maker is None:
         return NullBar()
     return maker(label, total=total, estimate_s=estimate_s, unit=unit)
+
+
+def run_with_progress(cmd, log, label: str, estimate_s: float = 0.0,
+                      note_width: int = 48, bar=None, done: float = 0.0):
+    """Run a subprocess, showing what it last said and how long it has been going.
+
+    The spinner and the bar in this module do not animate on their own: they
+    redraw when something calls update(). A stage that blocks in
+    `subprocess.run` therefore paints "0s" once and then sits there, which is
+    indistinguishable from a hang. Co-folding does that for a quarter of an hour
+    and a Boltz-2 pose for six to seventeen minutes, and the first thing a
+    reader does about a frozen quarter of an hour is kill it.
+
+    So the child's stdout is drained on a thread -- both to keep the display
+    honest and because a full pipe would deadlock a chatty child -- and its
+    newest line is shown beside a clock that moves.
+
+    Returns (combined output, return code). Never raises for the child's sake:
+    a non-zero code is the caller's to interpret.
+    """
+    import subprocess
+    import threading
+
+    proc = subprocess.Popen([str(c) for c in cmd], stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, bufsize=1,
+                            encoding="utf-8", errors="replace")
+    lines: list[str] = []
+
+    def drain():
+        for line in proc.stdout:                       # type: ignore[union-attr]
+            lines.append(line.rstrip())
+
+    reader = threading.Thread(target=drain, daemon=True)
+    reader.start()
+
+    def pump(target):
+        while proc.poll() is None:
+            latest = next((line for line in reversed(lines) if line.strip()), "")
+            target.update(done, note=latest[:note_width]) if done else \
+                target.update(note=latest[:note_width])
+            time.sleep(0.2)
+
+    # `bar` is passed when the caller already owns the line. The affinity stage
+    # holds a bar counting poses and calls this once per pose: opening a second
+    # bar inside it would put two writers on one terminal line, each erasing the
+    # other. Given one, this drives it instead of creating another.
+    if bar is not None:
+        pump(bar)
+    else:
+        with bar_for(log, label, estimate_s=estimate_s) as own:
+            pump(own)
+    reader.join(timeout=5)
+    return "\n".join(lines) + "\n", proc.returncode

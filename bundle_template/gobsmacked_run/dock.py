@@ -154,36 +154,14 @@ def estimate_seconds(docking: dict) -> float:
 
 
 def run_with_progress(cmd, log, estimate_s: float):
-    """Run PandaDock, showing what it last said and how long it has been going.
+    """PandaDock's long silence, shown honestly. See console.run_with_progress.
 
     PandaDock prints "Starting docking..." and then nothing at all for a quarter
     of an hour, which is exactly the shape of output that gets a run killed by
-    someone who thinks it has hung. Its stdout is drained on a thread so the
-    pipe cannot fill and deadlock it, and the newest line it wrote is shown
-    beside a clock.
+    someone who thinks it has hung.
     """
-    import threading
-
-    from .console import bar_for
-
-    proc = subprocess.Popen([str(c) for c in cmd], stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, bufsize=1,
-                            encoding="utf-8", errors="replace")
-    lines: list[str] = []
-
-    def drain():
-        for line in proc.stdout:                       # type: ignore[union-attr]
-            lines.append(line.rstrip())
-
-    reader = threading.Thread(target=drain, daemon=True)
-    reader.start()
-    with bar_for(log, "docking", estimate_s=estimate_s) as bar:
-        while proc.poll() is None:
-            latest = next((line for line in reversed(lines) if line.strip()), "")
-            bar.update(note=latest[:48])
-            time.sleep(0.2)
-    reader.join(timeout=5)
-    return "\n".join(lines) + "\n", proc.returncode
+    from .console import run_with_progress as shared
+    return shared(cmd, log, "docking", estimate_s=estimate_s)
 
 
 def build_command(mode: str, receptor: Path, ligand: Path, centre, box, docking: dict,
