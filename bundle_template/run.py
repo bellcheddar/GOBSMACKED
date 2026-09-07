@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import traceback
@@ -228,4 +229,20 @@ def done_marker(work: Path, name: str) -> Path:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    code = main()
+    # os._exit, not sys.exit. sys.exit waits for every non-daemon thread and runs
+    # every atexit handler, and this process has imported torch (via pandadock)
+    # and OpenMM at module scope whether or not their stages ran. On a real run
+    # that wait was 25 minutes: run.py printed its final line, returned 1, and
+    # the interpreter then sat there until a watchdog killed it, which reads from
+    # outside as a hung stage rather than a finished one.
+    #
+    # Nothing is lost by leaving early. Every stage writes its own .done marker,
+    # the archive is packed and closed, and run.log is opened and closed per
+    # write, so the only buffers that could still hold anything are these two.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except Exception:                             # noqa: BLE001
+            pass
+    os._exit(code)
