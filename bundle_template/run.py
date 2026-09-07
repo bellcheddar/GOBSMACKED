@@ -43,6 +43,8 @@ STAGES = {
 # What each stage is for, in one line, printed under its heading so a reader who
 # has never seen this pipeline knows what is taking the time.
 BLURB = {
+    # fold's line depends on the campaign, so blurb_for() overrides this one.
+    # Left here so every stage still has an entry and the dict reads completely.
     "fold": "ESMFold, unless the bundle already carries a model",
     "prep": "trim, protonate at the campaign pH, and build the ligand conformer",
     "dock": "PandaDock inside the campaign's box",
@@ -63,7 +65,27 @@ MD_SECONDS_PER_NS = 3500.0      # 500 ps of production in 1,752 s, so 24.7 ns/da
 MD_SETUP_SECONDS = 450.0        # 290 s solvating, 23 s minimising, the rest imports
 SUMMARISE_SECONDS_PER_FRAME = 1.1   # 100 frames in 110 s, pocket volume dominating
 FOLD_SECONDS = 180.0            # ESMFold on a ~250-residue chain; the one number not measured here
+# Co-folding is a Boltz-2 pass with the structure module doing the work, not a
+# template being steered, so it is nothing like ESMFold's three minutes. Taken
+# from the affinity stage's own per-pose timings on the same size of target,
+# where a pose took 6 to 17 minutes; this is one pass and the MSA is shared with
+# affinity rather than paid for twice. Quoting 3 minutes for it was wrong by
+# roughly a factor of five.
+COFOLD_SECONDS = 900.0
 PREP_SECONDS = 10.0             # measured at 3-5 s, rounded up for a cold RDKit
+
+
+def blurb_for(name: str, campaign: dict) -> str:
+    """What a stage is about to do, for this campaign rather than in general.
+
+    Only fold differs, and it differs in a way the reader needs: co-folding
+    builds the pocket around the ligand and then throws the ligand away, which
+    is a different thing from folding a sequence and is worth saying before it
+    takes a quarter of an hour.
+    """
+    if name == "fold" and fold.method_of(campaign) == "boltz2":
+        return "co-fold the protein with the ligand (Boltz-2), then keep the protein"
+    return BLURB[name]
 
 
 def estimate_seconds(name: str, campaign: dict, skip_fold: bool) -> float:
@@ -76,7 +98,9 @@ def estimate_seconds(name: str, campaign: dict, skip_fold: bool) -> float:
     """
     md_cfg = campaign.get("md") or {}
     if name == "fold":
-        return 0.0 if skip_fold else FOLD_SECONDS
+        if skip_fold:
+            return 0.0
+        return COFOLD_SECONDS if fold.method_of(campaign) == "boltz2" else FOLD_SECONDS
     if name == "prep":
         return PREP_SECONDS
     if name == "dock":
@@ -139,7 +163,7 @@ def main(argv=None) -> int:
     for name in STAGES:
         if name in plan:
             note = ("a model was supplied, nothing to fold" if name == "fold" and skipped_fold
-                    else f"{BLURB[name]}  ~{console_mod.human(estimate(name))}")
+                    else f"{blurb_for(name, campaign)}  ~{console_mod.human(estimate(name))}")
             rows.append((name, "run", note))
         elif done_marker(work, name).exists():
             rows.append((name, "done", "already done, skipping"))
@@ -162,7 +186,7 @@ def main(argv=None) -> int:
     warnings: list[str] = []
     for index, name in enumerate(plan, start=1):
         started = time.time()
-        log.stage_start(index, len(plan), name, BLURB[name], estimate(name) or None)
+        log.stage_start(index, len(plan), name, blurb_for(name, campaign), estimate(name) or None)
         try:
             outcome = STAGES[name](campaign, work, results, log) or {}
         except Exception as exc:

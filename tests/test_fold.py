@@ -111,3 +111,50 @@ def test_split_keeps_the_protein_and_sets_the_ligand_aside(tmp_path):
     # pocket that still contains the ligand would find nowhere to put it.
     assert "LIG" not in body
     assert ligand.read_text(encoding="utf-8").rstrip().endswith("$$$$")
+
+
+# --- what the CLI says it is about to do -------------------------------------
+
+def _runner():
+    """run.py is a script, not a package member, so it is loaded by path."""
+    import importlib.util
+    path = Path(__file__).resolve().parents[1] / "bundle_template" / "run.py"
+    spec = importlib.util.spec_from_file_location("gobsmacked_runner", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["gobsmacked_runner"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+CAMPAIGN = {"md": {"production_ps": 500, "equilibration_ps": 100, "frame_interval_ps": 10},
+            "docking": {"mode": "dock"}, "affinity": {"include": True, "n_frames": 5}}
+
+
+def test_the_plan_names_the_method_it_will_actually_use():
+    """Stage 1 said "ESMFold" even when the campaign asked for co-folding."""
+    runner = _runner()
+    esm = runner.blurb_for("fold", {**CAMPAIGN, "fold": {"method": "esmfold"}})
+    boltz = runner.blurb_for("fold", {**CAMPAIGN, "fold": {"method": "boltz2"}})
+    assert "ESMFold" in esm
+    assert "ESMFold" not in boltz
+    assert "co-fold" in boltz and "Boltz-2" in boltz
+    # And the other stages are untouched by the campaign.
+    assert runner.blurb_for("md", CAMPAIGN) == runner.BLURB["md"]
+
+
+def test_co_folding_is_not_quoted_at_esmfolds_three_minutes():
+    """It quoted ~3 min for a stage that takes about a quarter of an hour."""
+    runner = _runner()
+    esm = runner.estimate_seconds("fold", {**CAMPAIGN, "fold": {"method": "esmfold"}}, False)
+    boltz = runner.estimate_seconds("fold", {**CAMPAIGN, "fold": {"method": "boltz2"}}, False)
+    assert esm == pytest.approx(180, abs=1)
+    assert boltz >= 600, "co-folding is minutes, not one ESMFold pass"
+    assert boltz > 4 * esm
+
+
+def test_a_supplied_model_still_costs_nothing_either_way():
+    """The usual case: the server shipped a structure, so fold is skipped."""
+    runner = _runner()
+    for method in ("esmfold", "boltz2"):
+        campaign = {**CAMPAIGN, "fold": {"method": method}}
+        assert runner.estimate_seconds("fold", campaign, skip_fold=True) == 0.0
