@@ -281,6 +281,59 @@ SE(3) GNN rescoring needs PyTorch and this machine had 12 GB of disk left, and 5
 short production run. Both are reasons to expect a worse pose, and neither changes what the
 scorecard is reporting.
 
+## 🧪 An experiment: five starting structures, one campaign
+
+The worked example above scores a D and says the pose is 8 Å from where erlotinib
+actually binds. The obvious reading is that the starting model was not good enough. That
+is a testable claim, so it was tested.
+
+Five runs of the same campaign, differing in one variable only: the structure docking
+starts from. Same ligand, same pocket, same box (31.7 x 21 x 23 Å), same seed, same
+exhaustiveness, same MD protocol, all judged against the same crystal. The first is a
+control that should be unbeatable, because it docks erlotinib back into the very crystal
+it came from.
+
+| # | Starting structure | Pocket Cα RMSD to 1M17 | Top-ranked pose | Best pose (its rank) | GOBSMACK |
+|---|---|---|---|---|---|
+| 1 | **1M17 crystal, self-dock** | **0.00 Å** | **8.77 Å** | 1.51 Å (rank 8) | D 52.8 |
+| 2 | 4HJO crystal, cross-dock | 1.53 Å | 4.29 Å | 2.29 Å (rank 5) | D 50.5 |
+| 3 | AlphaFold DB `AF-P00533-F1` | 2.05 Å | 7.73 Å | 4.81 Å (rank 8) | D 55.0 |
+| 4 | ESMFold, ESM Atlas | 1.83 Å | 8.09 Å | 5.44 Å (rank 9) | D 49.0 |
+| 5 | Boltz-2 co-folded, ligand stripped | 1.28 Å | 1.40 Å | 1.40 Å (rank 1) | B 79.0 |
+
+**The control settles it. A perfect receptor produced one of the worst top-ranked
+poses.** Docking erlotinib into its own crystal, with a pocket that is correct by
+construction, put an 8.77 Å pose first. The crystal pose was found: it is in the same
+list of ten, at 1.51 Å. It was placed eighth.
+
+So the sampling is not the bottleneck and the receptor is not the bottleneck. Within
+this pose set the limitation is **which pose gets ranked first**, which is a
+well-documented weakness of fast empirical scoring functions in general and not a
+property of any one implementation. They are built to be quick enough to search millions
+of placements, and that speed is bought against exactly this discrimination.
+
+Two secondary results, both of which change how the other numbers should be read:
+
+- **Starting-model quality does not predict pose quality.** With the 0.00 Å point
+  included there is no monotonic relationship down the first two columns: the best
+  possible receptor sits third from the worst on top-ranked pose. Reporting "the model
+  was too rough" would have been a comfortable and wrong conclusion, and four of the five
+  runs on their own would have supported it.
+- **The predicted affinity does not separate right poses from wrong ones.** pIC50 ranged
+  over 6.44 to 6.66 across poses spanning 1.4 to 8.8 Å, and the run with the *worst*
+  top-ranked pose returned the *highest* affinity of the five. This is the measured
+  argument for keeping affinity beside the composite score rather than inside it.
+
+The one run that ranked correctly is worth stating carefully rather than celebrating.
+Its receptor came from co-folding the protein *with* erlotinib and then removing the
+ligand, so its pocket is already ligand-adapted in a way an apo or predicted-apo pocket
+is not. It is one run, and a single B among four Ds is a hypothesis, not a result.
+
+**This is the entire argument for the app.** Every one of these five runs produced a
+stable, physically valid complex with a confident docking score, and four of them were
+wrong by 4 to 9 Å. Nothing internal to a docking run distinguishes them. Only the
+comparison against the experimental structure does.
+
 ## 🧫 Testing
 
 ```bash
@@ -328,6 +381,8 @@ Roadmap for GOBSMACKED, in dependency order. Suggestions welcome.
 - [x] **Affinity, before and after MD.** Built as stage 5 of six, on by default. Boltz-2's affinity head scores the docked pose and frames sampled from the last fifth of the trajectory, following the Boltzina pattern of feeding an existing pose straight to the affinity module with the structure module bypassed. Reported as pIC50, the raw log10(IC50/µM) and the binder probability for both, with the change between them and the spread across the sampled frames, and deliberately outside the composite score: every graded metric has a crystal to be right or wrong about, and a predicted affinity has none. It lives in its own pixi environment with `no-default-feature = true`, because boltz pins a torch that the docking environment must not inherit, and it never fails the run: a pose it cannot score becomes a missing panel with the reason attached
 - [x] **Every pose in the overlay, with the numbers that separate them.** All ten drawn at once, and per pose the docking score, in-place RMSD to the top pose, centroid separation, best-fit shape RMSD and closest approach to the receptor. In-place against best-fit is the pair that matters: the same conformer in two sites is a search problem, two different conformers is not
 - [x] **Make flex and hybrid docking actually run.** Four bugs, found only by using them rather than by reading them. `flex` treats `-o` as a filename prefix and writes to `<prefix>_results`, so every flex run appeared to produce nothing; `hybrid` accepts neither `--seed` nor `-e` and exits on either; the search radius was half the box's *longest* side, giving a sphere that reached well outside the box it was supposed to describe; and the GNN checkpoint had moved to a `v4` name and release URL, so `hybrid` silently fell back to the empirical scorer on every run
+- [x] **Five starting structures, one campaign.** The experiment above: same ligand, pocket, box, seed and MD protocol, varying only the structure docking starts from, with a self-dock control that is correct by construction. It found that the top-ranked pose, not the sampling and not the receptor, is what limits the result, and that neither starting-model quality nor predicted affinity separates a right pose from a wrong one
+- [ ] **Rank scoring functions on a fixed pose set.** The five runs left 50 poses whose distance to the crystal is already known, so the ranking question can be asked directly and cheaply: rescore the same poses with several independent scoring functions and ask which one puts a near-native pose first, per receptor type. No docking and no MD, because the search already found the answer every time
 - [ ] **STEVEDORE: multi-ligand SAR series.** Score a congeneric series against one reference and correlate with ChEMBL affinity, which turns a single verification into a protocol assessment
 - [ ] **DOCKYARD: ingest poses from other engines.** Boltz-2, Vina and DiffDock all produce poses this scorecard could grade, and the comparison is more interesting than any single engine's self-report
 - [ ] **Cryptic pocket detection.** The pocket volume trace already shows a pocket opening and closing during MD; naming that as a finding rather than a plot is the next step
