@@ -2,7 +2,7 @@
 
 > **Fold, dock, relax and annotate a protein-ligand complex, then check it against the experimental structure.**
 
-[![live](https://img.shields.io/badge/live-gobsmacked.mdeller.com-00d084?logo=icloud&logoColor=white)](https://gobsmacked.mdeller.com) ![python](https://img.shields.io/badge/python-3.11.16-3776AB?logo=python&logoColor=white) ![flask](https://img.shields.io/badge/flask-3.1.3-000000?logo=flask&logoColor=white) ![gunicorn](https://img.shields.io/badge/gunicorn-26.2.0-499848?logo=gunicorn&logoColor=white) ![nginx](https://img.shields.io/badge/nginx-1.24-009639?logo=nginx&logoColor=white) ![sqlite](https://img.shields.io/badge/sqlite-3-003B57?logo=sqlite&logoColor=white) ![rdkit](https://img.shields.io/badge/rdkit-2026.3.6-3838AB) ![biotite](https://img.shields.io/badge/biotite-1.6.0-467FF7) ![gemmi](https://img.shields.io/badge/gemmi-0.7.5-467FF7) ![mdtraj](https://img.shields.io/badge/mdtraj-1.11.1-467FF7) ![plip](https://img.shields.io/badge/PLIP-3.0.1-9b51e0) ![pandamap](https://img.shields.io/badge/PandaMap-4.3.0-9b51e0) ![pandadock](https://img.shields.io/badge/PandaDock-4.1.1-9b51e0) ![openmm](https://img.shields.io/badge/OpenMM-8.2-00897B) ![esmfold](https://img.shields.io/badge/ESMFold-v1-00897B) ![tmtools](https://img.shields.io/badge/TM--align-0.3.0-00897B) ![molstar](https://img.shields.io/badge/Mol*-5.11.0-467FF7) ![plotly](https://img.shields.io/badge/Plotly.js-2.35.2-3F4F75?logo=plotly&logoColor=white) ![tests](https://img.shields.io/badge/pytest-79%20passing-00d084) ![data](https://img.shields.io/badge/data-RCSB%20%C2%B7%20UniProt%20%C2%B7%20AlphaFold%20DB%20%C2%B7%20KLIFS%20%C2%B7%20GPCRdb%20%C2%B7%20InterPro-467FF7) ![licence](https://img.shields.io/badge/licence-MIT-lightgrey) ![author](https://img.shields.io/badge/author-Marc%20C.%20Deller%2C%20D.Phil.-1C244B)
+[![live](https://img.shields.io/badge/live-gobsmacked.mdeller.com-00d084?logo=icloud&logoColor=white)](https://gobsmacked.mdeller.com) ![python](https://img.shields.io/badge/python-3.12.3-3776AB?logo=python&logoColor=white) ![flask](https://img.shields.io/badge/flask-3.1.3-000000?logo=flask&logoColor=white) ![gunicorn](https://img.shields.io/badge/gunicorn-26.2.0-499848?logo=gunicorn&logoColor=white) ![nginx](https://img.shields.io/badge/nginx-1.24-009639?logo=nginx&logoColor=white) ![sqlite](https://img.shields.io/badge/sqlite-3-003B57?logo=sqlite&logoColor=white) ![rdkit](https://img.shields.io/badge/rdkit-2026.3.6-3838AB) ![biotite](https://img.shields.io/badge/biotite-1.6.0-467FF7) ![gemmi](https://img.shields.io/badge/gemmi-0.7.5-467FF7) ![mdtraj](https://img.shields.io/badge/mdtraj-1.11.1-467FF7) ![plip](https://img.shields.io/badge/PLIP-3.0.1-9b51e0) ![pandamap](https://img.shields.io/badge/PandaMap-4.3.0-9b51e0) ![pandadock](https://img.shields.io/badge/PandaDock-4.1.1-9b51e0) ![openmm](https://img.shields.io/badge/OpenMM-8.6.0-00897B) ![boltz](https://img.shields.io/badge/Boltz--2-2.2.1-00897B) ![esmfold](https://img.shields.io/badge/ESMFold-v1-00897B) ![tmtools](https://img.shields.io/badge/TM--align-0.3.0-00897B) ![molstar](https://img.shields.io/badge/Mol*-5.11.0-467FF7) ![plotly](https://img.shields.io/badge/Plotly.js-2.35.2-3F4F75?logo=plotly&logoColor=white) ![tests](https://img.shields.io/badge/pytest-156%20passing-00d084) ![data](https://img.shields.io/badge/data-RCSB%20%C2%B7%20UniProt%20%C2%B7%20AlphaFold%20DB%20%C2%B7%20KLIFS%20%C2%B7%20GPCRdb%20%C2%B7%20InterPro-467FF7) ![licence](https://img.shields.io/badge/licence-MIT-lightgrey) ![author](https://img.shields.io/badge/author-Marc%20C.%20Deller%2C%20D.Phil.-1C244B)
 
 <table>
 <tr>
@@ -31,7 +31,7 @@ The heavy compute does not run on the server. ESMFold, the PandaDock GNN and Ope
 | Stage | Where | What happens |
 |---|---|---|
 | **Prepare** | droplet, CPU | Resolve the input, fetch the best available structure, annotate the family, pick the pocket, choose a reference crystal, emit `run_bundle.tar.gz` |
-| **Run** | your machine, GPU | `pixi run gobsmacked`: fold (if needed), prep, dock, minimise and run MD, summarise, emit `results.tar.gz` |
+| **Run** | your machine, GPU | `pixi run gobsmacked`: fold (if needed), prep, dock, minimise and run MD, score the affinity before and after, summarise, emit `results.tar.gz` |
 | **Analyze** | droplet, CPU | Validate the archive, superpose on the pocket, run PLIP and PandaMap, grade, classify the binding mode, draw the trajectory |
 
 Nothing in the bundle contacts the server. The campaign file goes in, the results archive comes back, and both are validated against a schema so a failed stage never turns into a puzzling analysis.
@@ -48,10 +48,12 @@ curl -fL "https://gobsmacked.mdeller.com/runs/<job-id>/bundle" | tar xz \
 Prepare prints that line with the job filled in and a copy button. One step, and the only
 prerequisites are `curl` and `bash`: the bundle carries its own `pixi.lock`, and `run.sh`
 installs pixi if the machine has not got it, builds the environment from the lock (no solve, so
-the versions are the ones the bundle was tested with) and runs all five stages. The environment
+the versions are the ones the bundle was tested with) and runs all six stages. The environment
 lives in `.pixi/` inside the bundle directory, so nothing is installed system-wide.
 
-Upload `results/results.tar.gz` on the Analyze tab when it finishes.
+Upload `results.tar.gz` on the Analyze tab when it finishes. It is written at the top level of the
+bundle directory, next to `run.sh`, rather than inside `results/`: the archive is the one file the
+run exists to produce and nobody should have to go looking for it.
 
 To run the web application locally:
 
@@ -88,7 +90,7 @@ Four panels, each unlocking the next.
 
 ## ⚗️ Run
 
-Five stages, each idempotent and resumable from a `.done` marker.
+Six stages, each idempotent and resumable from a `.done` marker.
 
 | Stage | Tool | Notes |
 |---|---|---|
@@ -96,6 +98,7 @@ Five stages, each idempotent and resumable from a `.done` marker.
 | `prep` | PDBFixer, RDKit | Missing atoms, hydrogens at the campaign pH, waters and heteroatoms removed. Terminal missing residues are deliberately not built: they are absent from the construct, not from the model |
 | `dock` | PandaDock | `hybrid` (search plus SE(3) GNN rescoring), `flex` (induced fit) or `dock` (empirical only). Falls back from `hybrid` to `dock` when the GNN checkpoint cannot be fetched, and says so |
 | `md` | OpenMM, OpenFF | Amber14 plus OpenFF Sage, TIP3P with 0.15 M NaCl and 10 Å padding, restraints released over the equilibration, 2 fs with hydrogen mass repartitioning. The DCD holds the solute only |
+| `affinity` | Boltz-2 | Optional, on by default. The docked pose and frames sampled from the last fifth of the trajectory, each scored by Boltz-2's affinity head with the structure module bypassed. The MSA is computed once per target and cached, so only the first pose queries the server |
 | `summarise` | MDTraj | Per-frame ligand and backbone RMSD, per-residue RMSF, pocket volume by voxel counting, a residue-by-frame contact matrix, then packs the archive |
 
 ```bash
@@ -103,7 +106,15 @@ Five stages, each idempotent and resumable from a `.done` marker.
 ./run.sh --stage dock    # rerun from dock onward
 ```
 
-Target on one consumer GPU: under 30 minutes for a 300-residue domain with the default 1 ns production. The runner prints a wall-clock estimate before it starts.
+Target on one consumer GPU: under 30 minutes for a 300-residue domain with the default 1 ns
+production, and roughly an hour with the affinity stage on, which is the slowest of the six once
+the MD is short. The runner prints a per-stage plan with wall-clock estimates and a finishing time
+before it starts, then a progress bar and a running ETA for each stage as it goes.
+
+**Warnings are triaged rather than dumped.** Every third-party warning the run emits was read
+once, and each is either fixed at the source, suppressed by an exact-match filter with the reason
+recorded next to it, or left visible because it is telling you something. What reaches the terminal
+is what a reader should act on.
 
 ## 📊 Analyze
 
@@ -139,6 +150,38 @@ Model in grey, MD-final in phosphor, the crystal in amber, all superposed on the
 
 ![The three-way overlay for the beta-2 adrenergic receptor: the relaxed complex in cyan and crystal structure 2RH1 in amber, superposed on 53 pocket Ca atoms at TM 0.999, with carazolol drawn in pink, above a table of the most displaced pocket side chains with their chi1 angles in the model and in the crystal](docs/screenshots/overlay.png)
 
+### 🧲 Affinity, before and after MD
+
+Boltz-2's affinity head scores the docked pose and the relaxed complex, so the panel answers a
+question the rest of the scorecard cannot: did relaxing the pose change what the model thinks of
+it. Each is reported as pIC50, the raw `affinity_pred_value` (log10 of IC50 in micromolar, lower
+is stronger) and the binder probability, with the change between them. The post-MD figure is a
+mean over several frames from the last fifth of the trajectory, with its standard deviation, so a
+prediction that swings by a log unit across the sampled window says so rather than presenting one
+frame as the answer.
+
+**It is deliberately outside the composite score.** Every graded metric on the scorecard has a
+crystal structure to be right or wrong about. A predicted affinity has none, and folding an
+unverifiable number into a score whose whole argument is verification would break that argument.
+It sits beside the grade, not inside it.
+
+**A missing affinity is a missing panel, not a failed run.** The stage declines rather than
+raising: no ligand it can parameterise, no MSA, the affinity head writing nothing for a pose. The
+reason is carried into the archive and shown on the card, and the other five stages are untouched.
+
+### 🎲 Every pose, not just the top one
+
+Docking returns ten poses and the scorecard grades one of them, which hides the case that matters
+most: the run that found the right answer and ranked it fourth. The overlay panel draws all ten at
+once and tabulates, per pose, the docking score, the in-place RMSD to the top pose, the centroid
+separation, a best-fit shape RMSD, and the closest heavy-atom approach to the receptor.
+
+The distinction between the two RMSDs is the useful part. In-place RMSD asks how far this pose
+sits from that one; best-fit shape RMSD asks whether it is the same conformer put somewhere else.
+A pair that is 6 Å apart in place and 0.4 Å after superposition is one pose docked into two sites,
+which is a search problem. A pair that is 6 Å apart both ways is two genuinely different bound
+conformations, which is not.
+
 ### 🔑 The binding mode
 
 Two families get a real answer and everything else gets an honest one.
@@ -166,6 +209,7 @@ Two numbers in this repository were placed by measuring structures with this cod
 | PLIP | Interaction fingerprints | GPL-2.0 | droplet only, as a subprocess |
 | PandaMap | 2D interaction maps, empirical ΔG | MIT | droplet |
 | PandaDock | Docking (hybrid search plus SE(3) GNN rescoring) | MIT | bundle |
+| Boltz-2 | Affinity head, on the docked pose and on MD frames | MIT | bundle |
 | ESMFold, OpenFold | Folding when no model exists | MIT / Apache-2.0 | bundle |
 | OpenMM, PDBFixer, openmmforcefields | Preparation, minimisation, MD | MIT / LGPL | bundle |
 | MDTraj | Trajectory analysis | LGPL-2.1 | bundle and droplet |
@@ -178,18 +222,21 @@ Two numbers in this repository were placed by measuring structures with this cod
 ```
 app/                     the Flask application (droplet only, no torch)
   routes/                prepare, analyze, runs, about
-  services/              fetch, annotate, references, bundle, ingest,
-                         superpose, interactions, scorecard, modes, dynamics
+  services/              fetch, annotate, references, bundle, ingest, superpose,
+                         interactions, scorecard, modes, dynamics, affinity,
+                         poses, movie
   templates/  static/    Jinja2, the instrument-panel CSS, Mol* and Plotly
 bundle_template/         copied verbatim into every run bundle
   run.sh                 one-step bootstrap: installs pixi, builds from the lock, runs
-  pixi.lock              970 packages pinned for linux-64 and osx-arm64
-  run.py                 the five-stage runner with resume markers
-  gobsmacked_run/        fold, prep, dock, md, summarise, schema
+  pixi.lock              1,969 pinned package entries across three environments
+                         (default, fold, affinity) and two platforms
+  run.py                 the six-stage runner with resume markers
+  gobsmacked_run/        fold, prep, dock, md, affinity, summarise, schema,
+                         console, noise
 design/                  the visual contract this app is built from
 deploy/                  systemd units, nginx site, provision and deploy scripts
 scripts/                 prune, DOI checker, THIRD_PARTY generator
-tests/                   79 tests, plus two fixture archives built from crystals
+tests/                   156 tests, plus two fixture archives built from crystals
 software.yaml            the single source of truth for attribution
 ```
 
@@ -237,7 +284,7 @@ scorecard is reporting.
 ## 🧫 Testing
 
 ```bash
-make test                # 79 tests, about a minute
+make test                # 156 tests, about 75 seconds
 make check-refs          # every DOI in software.yaml, checked against Crossref
 make third-party         # regenerate THIRD_PARTY.md from software.yaml
 python tests/fixtures/build_fixtures.py    # rebuild the two fixture archives
@@ -278,7 +325,9 @@ Roadmap for GOBSMACKED, in dependency order. Suggestions welcome.
 - [x] **PLIP interactions drawn in Mol\*, and the pocket as sticks.** Mol*'s viewer build exports no shape builder, so each interaction is loaded as a tiny structure of two-atom fragments joined by CONECT records: a run of them along PLIP's own endpoints reads as a dashed line, one file and one colour per interaction type. The lines are therefore the interactions the table lists rather than a second opinion computed by the viewer, which would quietly disagree with it
 - [x] **An apo reference in the overlay.** Optional on Panel 4, fetched and stripped of its ligands at analysis time, and drawn in purple as a fourth toggle: the shape the pocket has with nothing bound, which is the shape a predicted model tends to resemble
 - [x] **The trajectory played back beside the score.** Rendered on the droplet from the same trajectory the dynamics traces come from, so archives uploaded before it existed gain a clip on re-analysis: a Cα trace superposed on the protein, the pose in phosphor cyan, the residues lining its site in white, and forwards-then-backwards playback because a trajectory does not loop and a cut from the last frame to the first reads as a glitch rather than as data
-- [ ] **Affinity, before and after MD.** Specified in full and not yet built: Boltz-2's affinity head scored on the docked pose and on the relaxed complex, following the Boltzina pattern of feeding an existing pose straight to the affinity module with the structure module bypassed. Reported as pIC50, the raw log10(IC50/µM) and the binder probability for both, with the change between them, and deliberately outside the composite score: every graded metric has a crystal to be right or wrong about, and a predicted affinity has none
+- [x] **Affinity, before and after MD.** Built as stage 5 of six, on by default. Boltz-2's affinity head scores the docked pose and frames sampled from the last fifth of the trajectory, following the Boltzina pattern of feeding an existing pose straight to the affinity module with the structure module bypassed. Reported as pIC50, the raw log10(IC50/µM) and the binder probability for both, with the change between them and the spread across the sampled frames, and deliberately outside the composite score: every graded metric has a crystal to be right or wrong about, and a predicted affinity has none. It lives in its own pixi environment with `no-default-feature = true`, because boltz pins a torch that the docking environment must not inherit, and it never fails the run: a pose it cannot score becomes a missing panel with the reason attached
+- [x] **Every pose in the overlay, with the numbers that separate them.** All ten drawn at once, and per pose the docking score, in-place RMSD to the top pose, centroid separation, best-fit shape RMSD and closest approach to the receptor. In-place against best-fit is the pair that matters: the same conformer in two sites is a search problem, two different conformers is not
+- [x] **Make flex and hybrid docking actually run.** Four bugs, found only by using them rather than by reading them. `flex` treats `-o` as a filename prefix and writes to `<prefix>_results`, so every flex run appeared to produce nothing; `hybrid` accepts neither `--seed` nor `-e` and exits on either; the search radius was half the box's *longest* side, giving a sphere that reached well outside the box it was supposed to describe; and the GNN checkpoint had moved to a `v4` name and release URL, so `hybrid` silently fell back to the empirical scorer on every run
 - [ ] **STEVEDORE: multi-ligand SAR series.** Score a congeneric series against one reference and correlate with ChEMBL affinity, which turns a single verification into a protocol assessment
 - [ ] **DOCKYARD: ingest poses from other engines.** Boltz-2, Vina and DiffDock all produce poses this scorecard could grade, and the comparison is more interesting than any single engine's self-report
 - [ ] **Cryptic pocket detection.** The pocket volume trace already shows a pocket opening and closing during MD; naming that as a finding rather than a plot is the next step

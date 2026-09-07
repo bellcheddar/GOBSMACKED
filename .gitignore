@@ -14,9 +14,13 @@ gobsmacked.db
 gobsmacked.db-*
 .env
 
-# Session transcripts and scratch
+# Session transcripts and scratch. The dated glob is /export's output, which
+# lands in whatever directory the session is in: a verbatim conversation, not
+# something the project needs. Dated rather than a bare *.txt, which would
+# quietly untrack requirements.txt.
 *.txt.session
 scratch/
+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.txt
 
 # Fixture inputs: regenerable by tests/fixtures/build_fixtures.py
 tests/fixtures/_structures/
