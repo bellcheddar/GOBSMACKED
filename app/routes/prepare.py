@@ -327,6 +327,26 @@ def api_reference_site():
 # Generate the bundle
 # ---------------------------------------------------------------------------
 
+def _pocket_outside_range(residues, span) -> list[int]:
+    """Pocket residue numbers that the trim range would throw away.
+
+    An absent or unparseable range trims nothing, so nothing can fall outside it.
+    """
+    try:
+        first, last = int(span[0]), int(span[1])
+    except (TypeError, ValueError, IndexError):
+        return []
+    out = []
+    for item in residues:
+        try:
+            number = int(str(item).split(":")[-1])
+        except (TypeError, ValueError):
+            continue
+        if not (first <= number <= last):
+            out.append(number)
+    return sorted(set(out))
+
+
 @bp.post("/api/bundle")
 def api_bundle():
     payload = request.get_json(silent=True) or {}
@@ -341,6 +361,31 @@ def api_bundle():
         return jsonify({"error": "No ligand SMILES: complete Panel 3 first."}), 400
     if not pocket.get("center"):
         return jsonify({"error": "No pocket: select residues or use a reference ligand's site."}), 400
+
+    # The pocket is translated into the model's numbering by
+    # /api/reference_site; the trim range is typed into a box and is not. So a
+    # campaign can carry a pocket in a crystal's numbering and a range in
+    # UniProt's, and the two disagree by however far apart those systems are
+    # (24 residues for EGFR). It cost a real run: 11 of 51 pocket residues fell
+    # outside the range, and the co-folded model was numbered from the sequence,
+    # so the pocket list named residues 24 positions from the site.
+    #
+    # The check is semantic rather than about numbering, which is what makes it
+    # hold whichever system either value is in: if the pocket is not inside the
+    # domain you are trimming to, you are about to delete the pocket you intend
+    # to dock into. There is no case where that is what was meant.
+    outside = _pocket_outside_range(pocket.get("residues") or [],
+                                    protein.get("residue_range"))
+    if outside:
+        span = protein.get("residue_range")
+        return jsonify({"error":
+            f"{len(outside)} of the pocket's residues fall outside the trim range "
+            f"{span[0]}-{span[1]}: {', '.join(str(r) for r in outside[:6])}"
+            f"{' and others' if len(outside) > 6 else ''}. Trimming would delete part "
+            f"of the site being docked into. This usually means the range and the "
+            f"pocket are in different numbering: a crystal often numbers from the "
+            f"mature protein and UniProt from the precursor. Clear the range to keep "
+            f"the whole chain, or set it in the same numbering the pocket uses."}), 400
 
     job_id = db.new_job_id()
     owner_token = db.new_owner_token()

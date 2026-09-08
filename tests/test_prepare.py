@@ -362,3 +362,50 @@ def test_the_prepare_page_offers_it():
     with create_app().test_client() as client:
         html = client.get("/prepare").get_data(as_text=True)
     assert 'id="cofold"' in html
+
+
+# --- the campaign has to agree with itself -----------------------------------
+
+def test_a_range_that_would_cut_into_the_pocket_is_refused():
+    """The pocket is translated into the model's numbering; the trim range is
+    typed into a box and is not. A real run carried a pocket at 692-833 in a
+    crystal's numbering and a range of 714-966 in UniProt's, 24 apart, so
+    trimming would have deleted 11 of the 51 pocket residues."""
+    from app.routes.prepare import _pocket_outside_range
+    pocket = [f"A:{n}" for n in range(692, 834)]
+    outside = _pocket_outside_range(pocket, [714, 966])
+    assert outside and min(outside) == 692 and max(outside) < 714
+
+
+def test_a_consistent_campaign_passes_and_no_range_trims_nothing():
+    from app.routes.prepare import _pocket_outside_range
+    assert _pocket_outside_range([f"A:{n}" for n in range(720, 800)], [714, 966]) == []
+    for span in (None, [], ["x", "y"], [714]):
+        assert _pocket_outside_range(["A:692"], span) == []
+
+
+def test_the_bundle_endpoint_says_why_rather_than_500ing():
+    from app import create_app
+    app = create_app()
+    with app.test_client() as client:
+        r = client.post("/api/bundle", json={
+            "protein": {"sequence": "ACDE" * 300, "residue_range": [714, 966]},
+            "ligand": {"smiles": "CCO"},
+            "pocket": {"center": [0, 0, 0], "box": [20, 20, 20],
+                       "residues": [f"A:{n}" for n in range(692, 834)]},
+        })
+    assert r.status_code == 400
+    body = r.get_json()["error"]
+    assert "outside the trim range" in body and "numbering" in body
+
+
+def test_the_worked_example_does_not_ship_two_numbering_systems():
+    """It shipped PDB 1M17 (mature numbering) alongside 714-966 (UniProt), which
+    is the exact pair that produced the refusal above."""
+    from app import create_app
+    with create_app().test_client() as client:
+        html = client.get("/prepare").get_data(as_text=True)
+    import re
+    field = re.search(r'<input[^>]*id="residue-range"[^>]*>', html).group(0)
+    assert 'value=""' in field, field
+    assert 'data-example=""' in field, field

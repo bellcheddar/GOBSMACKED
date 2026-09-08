@@ -30,10 +30,23 @@
       <input type="file" id="upload" accept=".pdb,.cif,.ent,.mmcif">
       <label for="residue-range">Trim to a domain, optional (first-last residue)</label>
       <div class="row">
-        <input type="text" id="residue-range" placeholder="714-966" autocomplete="off"
-               class="example" data-example="714-966" value="714-966">
+        {#- Empty by default, and deliberately so. The example forces 1M17, which
+            numbers EGFR from the mature protein; 714-966 is the kinase domain in
+            UniProt's precursor numbering, 24 higher. Shipping both put 11 of the
+            51 pocket residues outside the range, so trimming would have deleted
+            part of the site. A crystal is already the domain and needs no trim;
+            the range is for a full-length predicted model, which is what you get
+            once the PDB box above is cleared. -#}
+        <input type="text" id="residue-range" placeholder="e.g. 714-966" autocomplete="off"
+               class="example" data-example="" value="">
         <button class="fixed small" id="range-from-pfam" title="Use the Pfam domain the pocket sits in">From Pfam</button>
       </div>
+      <p class="note">Leave this empty for a crystal structure: it is already the domain. It is
+        for a full-length predicted model, where solvating the other 950 residues costs an order
+        of magnitude in MD time and tells you nothing about the pocket. <b>Whatever you put here
+        must be in the same numbering as the pocket</b>, which is the structure's own: a crystal
+        often counts from the mature protein and UniProt from the precursor, and for EGFR those
+        differ by 24. The bundle is refused if the range would cut into the pocket.</p>
       <div class="row" style="margin-top:14px">
         <button id="fetch-btn">Fetch</button>
       </div>
