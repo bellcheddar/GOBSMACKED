@@ -141,9 +141,16 @@ def cofold(campaign: dict, sequence: str, work: Path, results: Path,
         log("fold: co-fold asked for but there is no ligand, falling back to ESMFold")
         return _esmfold(campaign, sequence, results, target, log, warnings)
 
-    msa = aff.ensure_msa(sequence, log, warnings)
+    # Co-fold the domain that is going to be docked, not the whole precursor.
+    # The first co-folded run handed Boltz all 1,210 residues of EGFR when the
+    # campaign's own residue_range asked for 253, and prep then threw away
+    # four fifths of what had just been predicted. It cost 54 minutes against an
+    # estimate of 15, and it shapes the pocket in the context of a precursor
+    # nobody is docking into.
+    folded_sequence, offset = _domain_of(campaign, sequence, log)
+    msa = aff.ensure_msa(folded_sequence, log, warnings)
     yaml_path = out_dir / "cofold.yaml"
-    yaml_path.write_text(cofold_input(sequence, smiles, msa), encoding="utf-8")
+    yaml_path.write_text(cofold_input(folded_sequence, smiles, msa), encoding="utf-8")
 
     boltz_work = out_dir / "boltz"
     boltz_work.mkdir(parents=True, exist_ok=True)
@@ -174,10 +181,46 @@ def cofold(campaign: dict, sequence: str, work: Path, results: Path,
         return _esmfold(campaign, sequence, results, target, log, warnings)
 
     aff.capture_msa(boltz_work, msa, log)
-    kept, ligand_atoms = split_cofold(predicted, target, out_dir / "cofold_ligand.sdf")
+    kept, ligand_atoms = split_cofold(predicted, target, out_dir / "cofold_ligand.sdf",
+                                      first_residue=offset)
     if not kept:
         warnings.append("The co-folded structure had no protein chain; ESMFold was used instead.")
         return _esmfold(campaign, sequence, results, target, log, warnings)
+
+    # The docking box has to be moved into this structure's frame, and this is
+    # the whole reason the first co-folded run put its ligand 87 A from the
+    # site. The campaign's box centre was computed at Prepare time from the
+    # FETCHED structure's coordinates; Boltz-2 returns its own origin, 59 A
+    # away, and only 150 of 9,391 receptor atoms fell inside the box that
+    # resulted. Docking then searched empty space next to the protein and
+    # reported a confident pose in it.
+    #
+    # The centre is taken from the co-folded LIGAND, not from the pocket
+    # residue list. Two reasons. The residue numbers do not transfer: a campaign
+    # can carry a pocket in a crystal's numbering (1M17 counts 24 lower than
+    # UniProt) while the co-folded model is numbered from the sequence, so those
+    # numbers name different residues here. And the ligand needs no mapping at
+    # all -- Boltz just placed this exact molecule in the pocket it built, in
+    # this frame, which is the one thing that is true by construction.
+    #
+    # Its POSE is still discarded. Placing a box is a question about where the
+    # site is, which co-folding answers well; where the ligand sits inside it is
+    # the question docking is for, and the one co-folding answers at 4.5 to
+    # 4.8 A.
+    centre = _ligand_centre(out_dir / "cofold_ligand.sdf")
+    if centre is not None:
+        was = list((campaign.get("pocket") or {}).get("center") or [])
+        campaign.setdefault("pocket", {})["center"] = centre
+        moved = _distance(was, centre)
+        log(f"fold: box centre moved into the co-folded frame, "
+            f"{[round(v, 2) for v in centre]}"
+            + (f" ({moved:.1f} A from the campaign's)" if moved is not None else ""))
+    else:
+        warnings.append(
+            "The co-folded ligand could not be read, so the docking box kept the centre "
+            "computed from the fetched structure. Those are different coordinate frames "
+            "and the pose is very unlikely to be meaningful.")
+        log("fold: WARNING could not recentre the box on the co-folded site")
 
     log(f"fold: co-folded, kept {kept} protein residues and set aside the "
         f"{ligand_atoms}-atom predicted pose")
@@ -210,8 +253,16 @@ def _newest_cif(work: Path) -> Optional[Path]:
     return hits[0] if hits else None
 
 
-def split_cofold(cif: Path, protein_dest: Path, ligand_dest: Path) -> tuple[int, int]:
-    """Protein to model_apo.pdb, ligand to its own SDF, from one predicted complex."""
+def split_cofold(cif: Path, protein_dest: Path, ligand_dest: Path,
+                 first_residue: int = 1) -> tuple[int, int]:
+    """Protein to model_apo.pdb, ligand to its own SDF, from one predicted complex.
+
+    `first_residue` renumbers the output. Boltz numbers whatever sequence it was
+    given from 1, so a domain folded on its own comes back as 1..253 while the
+    campaign refers to it as 714..966. Renumbering here means prep's trim is a
+    no-op rather than a second, conflicting opinion about which residues these
+    are.
+    """
     import gemmi
 
     structure = gemmi.read_structure(str(cif))
@@ -247,7 +298,7 @@ def split_cofold(cif: Path, protein_dest: Path, ligand_dest: Path) -> tuple[int,
                         serial += 1
                         fh.write(
                             f"ATOM  {serial:>5d} {atom.name:<4s}{residue.name:>4s} A"
-                            f"{residue.seqid.num:>4d}    "
+                            f"{residue.seqid.num + first_residue - 1:>4d}    "
                             f"{atom.pos.x:8.3f}{atom.pos.y:8.3f}{atom.pos.z:8.3f}"
                             f"  1.00{atom.b_iso:6.2f}          {atom.element.name:>2s}\n")
             break
@@ -305,3 +356,63 @@ def _esmfold(campaign: dict, sequence: str, results: Path, target: Path,
     mean_plddt = round(sum(plddt.values()) / len(plddt), 1) if plddt else None
     return {"folded": True, "warnings": warnings,
             "headline": f"mean pLDDT {mean_plddt}" if mean_plddt else ""}
+
+
+def _ligand_centre(sdf: Path) -> Optional[list]:
+    """Centroid of the co-folded ligand, in the co-folded structure's frame.
+
+    The atom block is read by position rather than by "any line with three
+    numbers on it". A molfile's counts line is `  2  0  0 ...`, which parses
+    perfectly well as the coordinate (2, 0, 0) and drags the centroid toward the
+    origin: with two real atoms it moved the box centre by 5 A, and the whole
+    point of this function is that the box lands in the right place.
+    """
+    if not sdf.exists():
+        return None
+    lines = sdf.read_text(encoding="utf-8").splitlines()
+    if len(lines) < 5:
+        return None
+    try:                                   # line 4 is the counts line, V2000
+        count = int(lines[3][:3])
+    except (ValueError, IndexError):
+        return None
+    points = []
+    for line in lines[4:4 + count]:
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        try:
+            points.append((float(parts[0]), float(parts[1]), float(parts[2])))
+        except ValueError:
+            continue
+    if len(points) != count or not points:
+        return None
+    n = len(points)
+    return [round(sum(p[i] for p in points) / n, 3) for i in range(3)]
+
+
+def _distance(a, b) -> Optional[float]:
+    if not (a and b and len(a) == 3 and len(b) == 3):
+        return None
+    return sum((float(x) - float(y)) ** 2 for x, y in zip(a, b)) ** 0.5
+
+
+def _domain_of(campaign: dict, sequence: str, log) -> tuple[str, int]:
+    """The slice of the sequence that will actually be docked, and where it starts.
+
+    Returns the full sequence and an offset of 1 when the campaign asks for no
+    range, which is the ordinary case.
+    """
+    span = ((campaign.get("protein") or {}).get("residue_range") or None)
+    try:
+        first, last = int(span[0]), int(span[1])
+    except (TypeError, ValueError, IndexError):
+        return sequence, 1
+    if not (1 <= first <= last <= len(sequence)):
+        log(f"fold: residue_range {span} does not fit a {len(sequence)}-residue "
+            f"sequence, co-folding all of it")
+        return sequence, 1
+    domain = sequence[first - 1:last]
+    log(f"fold: co-folding residues {first}-{last} ({len(domain)} of "
+        f"{len(sequence)}), which is what gets docked")
+    return domain, first

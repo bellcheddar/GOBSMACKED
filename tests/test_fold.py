@@ -158,3 +158,96 @@ def test_a_supplied_model_still_costs_nothing_either_way():
     for method in ("esmfold", "boltz2"):
         campaign = {**CAMPAIGN, "fold": {"method": method}}
         assert runner.estimate_seconds("fold", campaign, skip_fold=True) == 0.0
+
+
+# --- the frame the box lives in ----------------------------------------------
+# The first co-folded run put its ligand 87 A from the site. The box centre had
+# been computed at Prepare time from the fetched structure; Boltz-2 returns its
+# own origin, 59 A away, and 150 of 9,391 receptor atoms fell inside the box.
+
+def test_the_box_centre_comes_from_the_co_folded_ligand(tmp_path):
+    """Not from the pocket residue list, which does not transfer: a campaign can
+    carry a pocket in a crystal's numbering while the co-folded model is
+    numbered from the sequence, and those name different residues."""
+    sdf = tmp_path / "cofold_ligand.sdf"
+    sdf.write_text(
+        "x\n  GOBSMACKED\n\n  2  0  0  0  0  0  0  0  0  0999 V2000\n"
+        "   10.0000    0.0000    0.0000 C   0  0\n"
+        "   20.0000   10.0000    4.0000 O   0  0\n"
+        "M  END\n$$$$\n", encoding="utf-8")
+    assert fold._ligand_centre(sdf) == [15.0, 5.0, 2.0]
+
+
+def test_a_missing_co_folded_ligand_is_detected_not_assumed(tmp_path):
+    """Silently keeping the old centre is the failure being fixed, so the
+    absence has to be visible to the caller."""
+    assert fold._ligand_centre(tmp_path / "nothing.sdf") is None
+    assert fold._distance([0, 0, 0], [3, 4, 0]) == 5.0
+    assert fold._distance(None, [1, 2, 3]) is None
+
+
+# --- co-fold the domain, not the precursor -----------------------------------
+
+def test_only_the_docked_domain_is_co_folded():
+    """It handed Boltz all 1,210 residues of EGFR when the campaign asked for
+    253, then prep threw away four fifths of the prediction. 54 minutes against
+    an estimate of 15."""
+    seq = "".join("ACDEFGHIKL"[i % 10] for i in range(1210))
+    campaign = {"protein": {"residue_range": [714, 966]}}
+    domain, offset = fold._domain_of(campaign, seq, lambda m: None)
+    assert len(domain) == 253
+    assert offset == 714
+    assert domain == seq[713:966]
+
+
+def test_no_range_means_the_whole_sequence():
+    seq = "ACDEFGHIKL"
+    for campaign in ({}, {"protein": {}}, {"protein": {"residue_range": None}}):
+        assert fold._domain_of(campaign, seq, lambda m: None) == (seq, 1)
+
+
+def test_a_range_that_does_not_fit_falls_back_loudly():
+    """A campaign can be internally inconsistent -- this one carried a pocket in
+    one numbering and a range in another. Folding a nonsense slice silently
+    would be worse than folding all of it."""
+    seq = "ACDEFGHIKL"
+    said = []
+    got = fold._domain_of({"protein": {"residue_range": [5, 900]}}, seq, said.append)
+    assert got == (seq, 1)
+    assert said and "does not fit" in said[0]
+
+
+def test_the_split_renumbers_into_the_campaigns_frame(tmp_path):
+    """Boltz numbers what it was given from 1. The campaign calls the same
+    residues 714 onward, and prep's trim reads those numbers."""
+    pytest.importorskip("gemmi")
+    cif = tmp_path / "c.cif"
+    _write_complex(cif)
+    protein = tmp_path / "m.pdb"
+    fold.split_cofold(cif, protein, tmp_path / "l.sdf", first_residue=714)
+    numbers = {int(line[22:26]) for line in protein.read_text().splitlines()
+               if line.startswith("ATOM")}
+    assert numbers == {714, 715}, numbers
+
+
+def test_the_counts_line_is_not_read_as_an_atom(tmp_path):
+    """`  2  0  0  0 ...` parses as the coordinate (2, 0, 0) if the atom block
+    is found by looking for lines with three numbers. With two real atoms it
+    moved the centre by 5 A."""
+    sdf = tmp_path / "l.sdf"
+    sdf.write_text(
+        "x\n  GOBSMACKED\n\n  2  0  0  0  0  0  0  0  0  0999 V2000\n"
+        "   10.0000    0.0000    0.0000 C   0  0\n"
+        "   20.0000   10.0000    4.0000 O   0  0\n"
+        "M  END\n$$$$\n", encoding="utf-8")
+    assert fold._ligand_centre(sdf) == [15.0, 5.0, 2.0]
+
+
+def test_a_truncated_atom_block_is_refused_rather_than_averaged(tmp_path):
+    """A short read would give a centre that looks plausible and is not."""
+    sdf = tmp_path / "l.sdf"
+    sdf.write_text(
+        "x\n  GOBSMACKED\n\n  3  0  0  0  0  0  0  0  0  0999 V2000\n"
+        "   10.0000    0.0000    0.0000 C   0  0\n"
+        "M  END\n$$$$\n", encoding="utf-8")
+    assert fold._ligand_centre(sdf) is None
