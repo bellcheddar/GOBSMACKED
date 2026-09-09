@@ -16,6 +16,61 @@
 
 ![The scorecard for EGFR plus erlotinib judged against crystal structure 1M17: a grade B dial at 83.5, six graded gauges each with a sentence explaining what to do about it, the relaxed complex in Mol*, PandaMap's 2D interaction diagram, and the kinase switch list reporting DFG-in, alphaC-out and a Type I binding mode matching the crystal](docs/screenshots/scorecard.png)
 
+## What this is asking
+
+**Can a predicted protein structure be docked well enough to reproduce an experimental
+one?** Given a sequence and a SMILES and no crystal, is the complex you get back close to
+the complex crystallography would have given you, and can you tell without looking?
+
+The answer this pipeline has arrived at, and it is provisional until the current batch of
+runs is complete: **docking into an AlphaFold model on its own does not reproduce the
+crystal**, and the reason is not the model. Two changes recover most of the gap.
+**Co-folding the receptor with the ligand first** (Boltz-2, then discard its ligand and
+re-dock) builds a pocket in which the search reliably finds a near-native pose. **Re-ranking
+those poses with Vinardo** then picks it, which the docking engine's own scoring function
+usually does not. On the case measured so far, the two together moved the same receptor and
+the same search from **D 56.2 to B 84.8**, with a ligand 1.6 A from the crystal instead of
+8.7 A.
+
+Neither change touches sampling. When the search never produces a near-native pose, as it
+does not for flexible-receptor docking on this target, nothing downstream rescues it, and
+the scorecard says so rather than reporting a confident wrong answer.
+
+```
+  PREPARE  (server, CPU)                    the campaign
+  ─────────────────────────────────────────────────────────────────
+   sequence ──► fetch structure ──► annotate family ──► pick pocket
+   + SMILES     PDB / AFDB / ESM    InterPro, KLIFS       Mol*
+                                                            │
+                                    choose reference ◄──────┘
+                                    RCSB + Tanimoto
+                                            │
+                                    campaign.yaml ──► run_bundle.tar.gz
+  ─────────────────────────────────────────────────────────────────
+                                            ▼
+  RUN  (your machine, GPU)                  the prediction
+  ─────────────────────────────────────────────────────────────────
+   1  FOLD       ESMFold          ──or──  Boltz-2 CO-FOLD
+                 sequence only            protein + ligand together,
+                                          keep the protein, discard
+                                          the pose, move the box
+   2  PREP       PDBFixer, RDKit
+   3  DOCK       PandaDock          10 poses, ranked by the engine
+   4  RANK       Vinardo            re-ranks them; its choice goes on
+   5  MD         OpenMM, OpenFF     relax pose 1, 500 ps
+   6  AFFINITY   Boltz-2 head       reported, never scored  (optional)
+   7  SUMMARISE  MDTraj             ──► results.tar.gz
+  ─────────────────────────────────────────────────────────────────
+                                            ▼
+  ANALYZE  (server, CPU)                    the verdict
+  ─────────────────────────────────────────────────────────────────
+   superpose on the pocket ──► PLIP + PandaMap ──► binding mode
+   vs the crystal               contacts             KLIFS / GPCRdb
+                                    │
+                                    ▼
+                          GOBSMACK score, A to F
+```
+
 **GOBSMACKED** (Ground-truth Overlay for Binding Sites, Modes And Complex Kinetics/Dynamics) takes a protein and a ligand, folds and docks and relaxes them, and then does the thing most docking pipelines skip: it goes and finds the crystal structure, superposes on the binding pocket, and tells you how close you got and why.
 
 **Why it matters:** a docking score is a ranking, not a measurement, and a pretty predicted complex looks exactly the same whether it is right or wrong. GOBSMACKED answers three separate questions about one prediction: how close the pose lands to the crystal (PIER REVIEW), whether molecular dynamics recovers the induced fit that an apo-like predicted pocket is missing (HOLOGRAM), and whether the binding mode the prediction implies is the binding mode the crystal shows (GATEKEEPER). It is useful for: anyone validating a docking protocol before trusting it on a target with no structure, anyone asking whether ESMFold plus docking is good enough for a particular pocket, and anyone who wants the answer as a graded scorecard rather than as a folder of PDB files.
@@ -31,7 +86,7 @@ The heavy compute does not run on the server. ESMFold, the PandaDock GNN and Ope
 | Stage | Where | What happens |
 |---|---|---|
 | **Prepare** | droplet, CPU | Resolve the input, fetch the best available structure, annotate the family, pick the pocket, choose a reference crystal, emit `run_bundle.tar.gz` |
-| **Run** | your machine, GPU | `pixi run gobsmacked`: fold (if needed), prep, dock, minimise and run MD, score the affinity before and after, summarise, emit `results.tar.gz` |
+| **Run** | your machine, GPU | `pixi run gobsmacked`: fold or co-fold, prep, dock, re-rank the poses, minimise and run MD, score the affinity before and after, summarise, emit `results.tar.gz` |
 | **Analyze** | droplet, CPU | Validate the archive, superpose on the pocket, run PLIP and PandaMap, grade, classify the binding mode, draw the trajectory |
 
 Nothing in the bundle contacts the server. The campaign file goes in, the results archive comes back, and both are validated against a schema so a failed stage never turns into a puzzling analysis.
@@ -90,13 +145,16 @@ Four panels, each unlocking the next.
 
 ## ⚗️ Run
 
-Six stages, each idempotent and resumable from a `.done` marker.
+Seven steps, each idempotent and resumable from a `.done` marker. Re-ranking runs inside
+the dock stage rather than as a stage of its own, because it re-orders that stage's output
+and has nothing of its own to resume.
 
 | Stage | Tool | Notes |
 |---|---|---|
 | `fold` | ESMFold, or Boltz-2 | Skipped when the bundle carries a model, which is the usual case. Chunk size scales with sequence length; pocket residues below pLDDT 70 raise a warning that reaches the scorecard. With **co-folding** selected on Prepare, the protein is folded *with* the ligand by Boltz-2, the predicted ligand pose is discarded and the ligand is docked again into the pocket built around it |
 | `prep` | PDBFixer, RDKit | Missing atoms, hydrogens at the campaign pH, waters and heteroatoms removed. Terminal missing residues are deliberately not built: they are absent from the construct, not from the model |
-| `dock` | PandaDock, smina | `hybrid` (search plus SE(3) GNN rescoring), `flex` (induced fit) or `dock` (empirical only). Falls back from `hybrid` to `dock` when the GNN checkpoint cannot be fetched, and says so. The ten poses are then re-ranked by **Vinardo** as a second opinion, reported beside the engine's own ranking and never acted on |
+| `dock` | PandaDock, smina | `hybrid` (search plus SE(3) GNN rescoring), `flex` (induced fit) or `dock` (empirical only). Falls back from `hybrid` to `dock` when the GNN checkpoint cannot be fetched, and says so |
+| `rank` | smina, Vinardo | The ten poses are re-scored and **re-ordered**, and Vinardo's choice is the pose carried forward. Measured over nine pose sets: the engine put a pose within 2 Å first once, Vinardo four times, and on the run the engine got right it chose the same pose. The engine's own rank stays as a column in `scores.csv`, and `docking.rank_by: engine` restores the old behaviour |
 | `md` | OpenMM, OpenFF | Amber14 plus OpenFF Sage, TIP3P with 0.15 M NaCl and 10 Å padding, restraints released over the equilibration, 2 fs with hydrogen mass repartitioning. The DCD holds the solute only |
 | `affinity` | Boltz-2 | Optional, on by default. The docked pose and frames sampled from the last fifth of the trajectory, each scored by Boltz-2's affinity head with the structure module bypassed. The MSA is computed once per target and cached, so only the first pose queries the server |
 | `summarise` | MDTraj | Per-frame ligand and backbone RMSD, per-residue RMSF, pocket volume by voxel counting, a residue-by-frame contact matrix, then packs the archive |
@@ -511,7 +569,9 @@ Roadmap for GOBSMACKED, in dependency order. Suggestions welcome.
 - [x] **Five starting structures, one campaign.** The experiment above: same ligand, pocket, box, seed and MD protocol, varying only the structure docking starts from, with a self-dock control that is correct by construction. It found that the top-ranked pose, not the sampling and not the receptor, is what limits the result, and that neither starting-model quality nor predicted affinity separates a right pose from a wrong one
 - [x] **Re-dock with alternative scoring functions, and test the affinity head as a re-ranker.** Twenty docking runs across the five receptors showed the apo sampling ceiling was a property of the search, not of the receptors: ESMFold's best available pose moves from 5.44 Å to 2.06 Å, and pooling every pose gives all five receptors something at 3.04 Å or better. No protocol tested picks it: 4.15 Å mean top-1 against a 1.94 Å oracle. The affinity head returns 0.19 log units of pIC50 across poses spanning 1.51 to 8.77 Å, ranks the 8.30 Å pose first, and correlates with RMSD at rho +0.26 (p 0.48), so it is not a rescoring function and is not used as one
 - [x] **Act on the five-structure findings, end to end.** Co-folding offered on Prepare (`fold.method: boltz2`, a checkbox rather than a structure-source entry, since the fetched structure still sizes the box), Vinardo re-ranking reported in the dock stage and shown beside the engine's own scores, MD rescue removed from the composite with its weight redistributed proportionally, and the predicted affinity's exclusion documented from measurement rather than principle. Prepare, bundle, results page and About all updated
-- [ ] **Close the 4.15 Å to 1.94 Å ranking gap.** Every receptor now has a near-native pose available and nothing ranks it first. This is the open problem, and it is upstream of anything the scorecard can fix: consensus scoring across functions, a rescoring model trained on decoys rather than on affinity, or short per-pose minimisation before ranking
+- [x] **Act on the ranking gap rather than only reporting it.** Vinardo now re-orders the poses and its choice is what goes to MD, after measuring nine pose sets: the engine put a pose within 2 Å first once, Vinardo four times, and on the run the engine got right it chose the same pose, so promoting it cost nothing. Consensus was tested at the same time and dropped, a three-way Borda count and an overrule rule both scoring identically to Vinardo alone. First end-to-end confirmation: the same co-folded receptor and the same search went from D 56.2 to **B 84.8**, ligand RMSD 8.72 Å to 1.62 Å, purely by carrying a different one of the ten poses forward
+- [ ] **Finish the six-run matrix and write up what it settles.** Two receptor sources by three docking modes, run sequentially with every fix in place. Provisional so far: co-folding plus Vinardo recovers the crystal pose wherever the search finds one, and neither touches the case where it does not
+- [ ] **Close the remaining sampling gap.** Every receptor now has a near-native pose available and nothing ranks it first. This is the open problem, and it is upstream of anything the scorecard can fix: consensus scoring across functions, a rescoring model trained on decoys rather than on affinity, or short per-pose minimisation before ranking
 - [x] **Rank scoring functions on a fixed pose set.** The five runs left 50 poses whose distance to the crystal is already known, so the ranking question can be asked directly and cheaply: rescore the same poses with several independent scoring functions and ask which one puts a near-native pose first, per receptor type. Done, with seven functions over fifty poses: rescoring alone recovers the crystal pose on the control, and it separates two different failures, ranking for holo-like pockets and sampling for apo-like ones
 - [ ] **STEVEDORE: multi-ligand SAR series.** Score a congeneric series against one reference and correlate with ChEMBL affinity, which turns a single verification into a protocol assessment
 - [ ] **DOCKYARD: ingest poses from other engines.** Boltz-2, Vina and DiffDock all produce poses this scorecard could grade, and the comparison is more interesting than any single engine's self-report

@@ -43,20 +43,26 @@
         <!-- Lane 2: Run, on your GPU -->
         <rect x="10" y="212" width="1220" height="118" rx="6" fill="#2c3a50" stroke="#3a4a63"/>
         <text x="24" y="234" fill="#9fb0c7" font-size="12">Run &middot; your machine, GPU, pixi</text>
-        {# Six boxes in the width that held five, so the pitch is 199 rather than
-           240: 24 + 5 x 199 + 176 = 1195, inside the 1220 lane. Affinity is drawn
-           in --ice like its panel on the results page, and its box is the only
-           one on this lane a campaign can switch off. #}
+        {# Seven boxes now, so the pitch is 171 and the box 148:
+           24 + 6 x 171 + 148 = 1198, inside the 1220 lane. Affinity is drawn in
+           --ice like its panel on the results page, and its box is the only one
+           on this lane a campaign can switch off. #}
+        {# Named for what each stage now does rather than for the tool it started
+           with: Fold can co-fold with the ligand, and Dock is two functions --
+           one searches and ranks, a second re-ranks and decides which pose goes
+           forward. Hiding that second step behind the word "PandaDock" would
+           misdescribe where the answer comes from. #}
         {% set run = [
-          ('Fold', 'ESMFold or co-fold', false),
+          ('Fold', 'ESMFold, or Boltz-2 co-fold', false),
           ('Prep', 'PDBFixer, RDKit', false),
-          ('Dock', 'PandaDock hybrid', false),
+          ('Dock', 'PandaDock search', false),
+          ('Rank', 'Vinardo re-scores the poses', false),
           ('MD', 'OpenMM, OpenFF', false),
           ('Affinity', 'Boltz-2, optional', true),
           ('Summarise', 'MDTraj', false)] %}
         {% for name, tools, optional in run %}
-        <g transform="translate({{ 24 + loop.index0 * 199 }}, 248)">
-          <rect width="176" height="66" rx="4" fill="#243044"
+        <g transform="translate({{ 24 + loop.index0 * 171 }}, 248)">
+          <rect width="148" height="66" rx="4" fill="#243044"
                 stroke="{{ '#43607a' if optional else '#3a4a63' }}"
                 stroke-dasharray="{{ '4 3' if optional else 'none' }}"/>
           <text x="12" y="26" fill="{{ '#8fd6ff' if optional else '#e8edf5' }}"

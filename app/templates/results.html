@@ -268,16 +268,15 @@
         under 2.2 A is a clash. Pose 1 went to MD; a highlighted row below it is the pose
         nearest the crystal.</p>
       {% if rs.ran %}
-      <p class="note"><b>{{ rs.function|capitalize }}</b> is a second scoring function's opinion of
-        these same ten coordinates, re-ranked after the fact. It sampled nothing and moved nothing.
+      <p class="note"><b>{{ rs.function|capitalize }}</b> re-scored these same ten coordinates and
+        <b>decides which pose goes forward</b>. It sampled nothing and moved nothing; it chose.
+        Measured over nine pose sets, the docking engine put a pose within 2 &#8491; of the crystal
+        first once and this function did it four times, and on the run the engine got right it
+        picked the same pose.
         {% if rs.agrees %}
-          It agrees that pose 1 is the best of them.
+          Here the two agree, which is two independent functions on the same answer.
         {% else %}
-          It would have put <b>{{ rs.top_pose|replace('pose', 'pose ') }}</b> first. Pose 1 went
-          forward regardless: on the five-structure comparison this function beat the shipped
-          ranking on four receptors and lost on the one that actually worked, so promoting its
-          choice would have improved the failures and spoiled the success. The disagreement is
-          shown so the judgement stays with you.
+          Here they disagree: the engine ranked this pose lower, and the column above shows where.
         {% endif %}
       </p>
       {% endif %}
