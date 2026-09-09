@@ -154,7 +154,7 @@ and has nothing of its own to resume.
 | `fold` | ESMFold, or Boltz-2 | Skipped when the bundle carries a model, which is the usual case. Chunk size scales with sequence length; pocket residues below pLDDT 70 raise a warning that reaches the scorecard. With **co-folding** selected on Prepare, the protein is folded *with* the ligand by Boltz-2, the predicted ligand pose is discarded and the ligand is docked again into the pocket built around it |
 | `prep` | PDBFixer, RDKit | Missing atoms, hydrogens at the campaign pH, waters and heteroatoms removed. Terminal missing residues are deliberately not built: they are absent from the construct, not from the model |
 | `dock` | PandaDock, smina | `hybrid` (search plus SE(3) GNN rescoring), `flex` (induced fit) or `dock` (empirical only). Falls back from `hybrid` to `dock` when the GNN checkpoint cannot be fetched, and says so |
-| `rank` | smina, Vinardo | The ten poses are re-scored and **re-ordered**, and Vinardo's choice is the pose carried forward. Measured over nine pose sets: the engine put a pose within 2 Å first once, Vinardo four times, and on the run the engine got right it chose the same pose. The engine's own rank stays as a column in `scores.csv`, and `docking.rank_by: engine` restores the old behaviour |
+| `rank` | smina, Vinardo | The ten poses are re-scored and **re-ordered**; Vinardo's choice is the pose carried forward, and the engine's own rank stays as a column in `scores.csv`. `docking.rank_by: engine` turns it off |
 | `md` | OpenMM, OpenFF | Amber14 plus OpenFF Sage, TIP3P with 0.15 M NaCl and 10 Å padding, restraints released over the equilibration, 2 fs with hydrogen mass repartitioning. The DCD holds the solute only |
 | `affinity` | Boltz-2 | Optional, on by default. The docked pose and frames sampled from the last fifth of the trajectory, each scored by Boltz-2's affinity head with the structure module bypassed. The MSA is computed once per target and cached, so only the first pose queries the server |
 | `summarise` | MDTraj | Per-frame ligand and backbone RMSD, per-residue RMSF, pocket volume by voxel counting, a residue-by-frame contact matrix, then packs the archive |
@@ -193,14 +193,9 @@ Upload the archive and the whole pipeline runs inside the request: ingest, super
 | MD stability: ligand drift, last window minus first | ≤ 0.5 Å | ≤ 1.0 | ≤ 1.5 | ≤ 2.5 | > 2.5 | 11 |
 | Pose validity: clashes, bond lengths, chirality, inside the box | pass | | | | fail | 5 |
 
-An **MD rescue** metric sat here at weight 10, grading whether relaxation moved the
-pocket toward the crystal. It was removed after seven runs in which MD moved the pocket
-*away* every single time (binomial p 0.0078), including from the furthest real ERBB
-kinase structure available. It correlated with the *starting* pocket's quality at
-Spearman +0.90, so it graded the input rather than the relaxation, and the best possible
-starting point scored worst on it. Its weight went to the five survivors in proportion.
-The number is still measured and still shown beneath the score, because what MD did to
-the pocket is worth seeing; it is just not something anyone has shown how to grade.
+How far MD moved the pocket is reported beneath the score and not graded: across every run
+measured it has moved the pocket *away* from the crystal, so the number says what happened
+rather than how well it went.
 
 The composite **GOBSMACK score** is the weighted mean of those grades. Three rules keep it honest:
 
@@ -226,10 +221,9 @@ mean over several frames from the last fifth of the trajectory, with its standar
 prediction that swings by a log unit across the sampled window says so rather than presenting one
 frame as the answer.
 
-**It is deliberately outside the composite score.** Every graded metric on the scorecard has a
-crystal structure to be right or wrong about. A predicted affinity has none, and folding an
-unverifiable number into a score whose whole argument is verification would break that argument.
-It sits beside the grade, not inside it.
+**It sits beside the grade, not inside it.** Every graded metric has a crystal to be right or
+wrong about and a predicted affinity has none. It is also measurably not a pose-quality signal:
+see the findings section below.
 
 **A missing affinity is a missing panel, not a failed run.** The stage declines rather than
 raising: no ligand it can parameterise, no MSA, the affinity head writing nothing for a pose. The
@@ -237,10 +231,10 @@ reason is carried into the archive and shown on the card, and the other five sta
 
 ### 🎲 Every pose, not just the top one
 
-Docking returns ten poses and the scorecard grades one of them, which hides the case that matters
-most: the run that found the right answer and ranked it fourth. The overlay panel draws all ten at
-once and tabulates, per pose, the docking score, the in-place RMSD to the top pose, the centroid
-separation, a best-fit shape RMSD, and the closest heavy-atom approach to the receptor.
+The scorecard grades one pose. The overlay panel draws all ten and tabulates, per pose, both
+scoring functions, the in-place RMSD to the top pose, the centroid separation, a best-fit shape
+RMSD, and the closest heavy-atom approach to the receptor — so a run that found the right answer
+and ranked it fourth is visible rather than hidden.
 
 The distinction between the two RMSDs is the useful part. In-place RMSD asks how far this pose
 sits from that one; best-fit shape RMSD asks whether it is the same conformer put somewhere else.
@@ -342,182 +336,64 @@ against the crystal's Type I. A docking score of −15.5 kcal/mol says nothing a
 that, which is the entire argument for scoring a prediction against the structure rather
 than against itself.
 
-Two caveats stated rather than buried: this run used the empirical scorer alone, because the
-SE(3) GNN rescoring needs PyTorch and this machine had 12 GB of disk left, and 500 ps is a
-short production run. Both are reasons to expect a worse pose, and neither changes what the
-scorecard is reporting.
+This run predates co-folding and Vinardo re-ranking, and is kept as a worked example of the
+output rather than as a current result. The findings section below is what the pipeline is
+tuned on now.
 
-## 🧪 An experiment: five starting structures, one campaign
+## 🧪 What the pipeline was tuned on
 
-The worked example above scores a D and says the pose is 8 Å from where erlotinib
-actually binds. The obvious reading is that the starting model was not good enough. That
-is a testable claim, so it was tested.
+Five runs of one campaign differing only in the structure docking started from, judged
+against 1M17, and then a follow-up that re-ranked the poses they produced. These are the
+measurements the current design rests on.
 
-Five runs of the same campaign, differing in one variable only: the structure docking
-starts from. Same ligand, same pocket, same box (31.7 x 21 x 23 Å), same seed, same
-exhaustiveness, same MD protocol, all judged against the same crystal. The first is a
-control that should be unbeatable, because it docks erlotinib back into the very crystal
-it came from.
+**Starting structure decides very little.**
 
-| # | Starting structure | Pocket Cα RMSD to 1M17 | Top-ranked pose | Best pose (its rank) | GOBSMACK |
-|---|---|---|---|---|---|
-| 1 | **1M17 crystal, self-dock** | **0.00 Å** | **8.77 Å** | 1.51 Å (rank 8) | D 52.8 |
-| 2 | 4HJO crystal, cross-dock | 1.53 Å | 4.29 Å | 2.29 Å (rank 5) | D 50.5 |
-| 3 | AlphaFold DB `AF-P00533-F1` | 0.91 Å | 7.73 Å | 4.81 Å (rank 8) | D 55.0 |
-| 4 | ESMFold, ESM Atlas | 0.99 Å | 8.09 Å | 5.44 Å (rank 9) | D 49.0 |
-| 5 | Boltz-2 co-folded, ligand stripped | 0.94 Å | 1.40 Å | 1.40 Å (rank 1) | B 79.0 |
-
-**The control settles it. A perfect receptor produced one of the worst top-ranked
-poses.** Docking erlotinib into its own crystal, with a pocket that is correct by
-construction, put an 8.77 Å pose first. The crystal pose was found: it is in the same
-list of ten, at 1.51 Å. It was placed eighth.
-
-So the sampling is not the bottleneck and the receptor is not the bottleneck. Within
-this pose set the limitation is **which pose gets ranked first**, which is a
-well-documented weakness of fast empirical scoring functions in general and not a
-property of any one implementation. They are built to be quick enough to search millions
-of placements, and that speed is bought against exactly this discrimination.
-
-Two secondary results, both of which change how the other numbers should be read:
-
-- **Starting-model quality does not predict pose quality.** Three of these pockets sit
-  within 0.09 Å of each other, at 0.91, 0.94 and 0.99 Å, and produce top-ranked poses of
-  7.73, 1.40 and 8.09 Å. The best possible receptor, at 0.00 Å, produces the worst pose
-  of the five. Reporting "the model was too rough" would have been a comfortable and
-  wrong conclusion, and four of the five runs on their own would have supported it.
-- **The predicted affinity does not separate right poses from wrong ones.** pIC50 ranged
-  over 6.44 to 6.66 across poses spanning 1.4 to 8.8 Å, and the run with the *worst*
-  top-ranked pose returned the *highest* affinity of the five. This is the measured
-  argument for keeping affinity beside the composite score rather than inside it.
-
-The one run that ranked correctly is worth stating carefully rather than celebrating.
-Its receptor came from co-folding the protein *with* erlotinib and then removing the
-ligand, so its pocket is already ligand-adapted in a way an apo or predicted-apo pocket
-is not. It is one run, and a single B among four Ds is a hypothesis, not a result.
-
-### Following it up: rank the scoring functions, not the pipeline
-
-If the limitation is which pose gets ranked first, that can be tested without docking
-anything again. The five runs left fifty poses whose distance to the crystal is already
-known, so the same fifty were rescored by seven independent functions. Every function saw
-an identical candidate set, which makes a difference in the answer a difference in the
-scoring rather than in what there was to score.
-
-**Top-1 RMSD after rescoring the same ten poses (Å; bold is within 2 Å):**
-
-| Scoring function | 1M17 self-dock | 4HJO cross | AlphaFold | ESMFold | Boltz-2 | Hits | Mean |
-|---|---|---|---|---|---|---|---|
-| Vinardo (smina / Vina 1.2.5) | **1.51** | 4.33 | 4.81 | 5.44 | **1.40** | 2/5 | **3.50** |
-| AutoDock Vina (smina / Vina 1.2.5) | **1.51** | 4.29 | 6.97 | 5.44 | **1.40** | 2/5 | 3.92 |
-| smina `dkoes_scoring` | **1.51** | 4.94 | 8.28 | 8.40 | **1.40** | 2/5 | 4.91 |
-| AutoDock4 (`ad4_scoring`) | 7.85 | 4.94 | 6.92 | 5.44 | **1.40** | 1/5 | 5.31 |
-| as shipped | 8.77 | 4.29 | 7.73 | 8.09 | **1.40** | 1/5 | 6.06 |
-| smina `dkoes_fast` | 7.85 | 4.94 | 6.92 | 7.08 | 8.09 | 0/5 | 6.98 |
-| _oracle: the best pose present_ | _1.51_ | _2.29_ | _4.81_ | _5.44_ | _1.40_ | 2/5 | _3.09_ |
-
-**On the control, rescoring alone recovers the crystal pose.** Vina and Vinardo both give
-pose 8 the best score of the ten and put it first, at 1.51 Å, where it had been ranked
-eighth. Nothing was re-docked and nothing was re-minimised: the same coordinates, read by
-a different function, produce the right answer. Across all five, mean top-1 improves from
-6.06 Å to 3.50 Å against an oracle of 3.09 Å, so Vinardo recovers most of the headroom
-that exists in these pose sets.
-
-**The oracle row splits the receptors into two different problems.** For the crystal and
-co-folded pockets a near-native pose is present and merely ranked below decoys, which
-rescoring fixes. For the two predicted-apo pockets the best pose in the set is 4.81 and
-5.44 Å, and no amount of rescoring can rescue a set whose best member is 4.81 Å.
-
-### Was that a sampling limit, or just that engine?
-
-Rescoring cannot answer it, because the poses were fixed in advance. So the same five
-receptors were docked again from scratch with four alternative functions driving the
-search, starting from a conformer built from SMILES rather than from any existing pose:
-seeding a search with a docked pose would turn a docking test into a minimisation test.
-Twenty runs, about 15 seconds each.
-
-| Receptor | Best pose the original search found | Best any engine found | By |
+| Starting structure | Pocket Cα to 1M17 | Top-ranked pose | Best pose (its rank) |
 |---|---|---|---|
-| 1M17 self-dock | 1.51 Å | **1.17 Å** | Vinardo |
-| 4HJO cross-dock | 2.29 Å | 2.04 Å | Vinardo |
-| AlphaFold DB | 4.81 Å | **3.04 Å** | Vinardo |
-| ESMFold | 5.44 Å | **2.06 Å** | AutoDock4 |
-| Boltz-2 co-folded | 1.40 Å | 1.40 Å | — |
+| 1M17 crystal, self-dock | 0.00 Å | 8.77 Å | 1.51 Å (8) |
+| 4HJO crystal, cross-dock | 1.53 Å | 4.29 Å | 2.29 Å (5) |
+| AlphaFold DB | 0.91 Å | 7.73 Å | 4.81 Å (8) |
+| ESMFold | 0.99 Å | 8.09 Å | 5.44 Å (9) |
+| Boltz-2 co-folded | 0.94 Å | 1.40 Å | 1.40 Å (1) |
 
-**The apo ceiling was a property of the search, not of the receptors.** ESMFold's best
-available pose moves from 5.44 Å to 2.06 Å. Pooling every pose any engine produced gives
-each of the five receptors something at 3.04 Å or better, and four of the five something
-at 2.06 Å or better: a mean oracle of 1.94 Å where the original sets managed 3.09 Å.
+Three of those pockets sit within 0.09 Å of each other and produce top poses of 7.73, 1.40
+and 8.09 Å. Docking a ligand back into **its own crystal** — a perfect receptor — produces
+the worst top pose of the five, with the right answer present at rank 8.
 
-**No protocol tested exploits that.** Top-1 RMSD, which is the only number the pipeline
-carries forward, at three thresholds:
+**Ranking is the binding constraint, and it is what makes results irreproducible.** The
+search finds a near-native pose far more often than the engine's scoring function ranks one
+first. Re-scoring the same coordinates with Vinardo, over nine pose sets whose distance to
+the crystal is known:
 
-| Protocol | ≤2.0 Å | ≤2.5 Å | ≤3.0 Å | Mean top-1 |
-|---|---|---|---|---|
-| as shipped | 1/5 | 1/5 | 1/5 | 6.06 Å |
-| dock with Vina | 1/5 | 1/5 | 1/5 | 5.09 Å |
-| dock with Vinardo | 1/5 | 1/5 | 1/5 | 5.54 Å |
-| dock with AutoDock4 | 0/5 | 1/5 | 2/5 | 4.31 Å |
-| pool every pose, rank by Vinardo | 1/5 | **3/5** | 3/5 | 5.73 Å |
-| pool every pose, rank by AutoDock4 | 0/5 | 2/5 | 3/5 | **4.15 Å** |
-| _oracle over the pooled set_ | _2/5_ | _4/5_ | _4/5_ | _1.94 Å_ |
+| | within 2 Å | mean top-1 |
+|---|---|---|
+| the docking engine | 1/9 | 7.02 Å |
+| **Vinardo** | **4/9** | **4.03 Å** |
+| best pose present | 4/9 | 3.48 Å |
 
-Three things in that table are worth more than the ranking itself:
+Vinardo also chooses the same pose on the run the engine got right, so it costs nothing to
+prefer it. Consensus rules were tested and are not used: a three-way Borda count and a
+"Vinardo unless two others overrule" rule both score 4/9 at a mean of 4.03, identical to
+Vinardo alone. End to end, on one co-folded receptor, this moved the same search from
+**D 56.2 to B 84.8** — ligand RMSD 8.72 Å to 1.62 Å — by carrying a different one of the
+ten poses forward.
 
-- **The threshold decides the story.** At 2.0 Å nothing beats the shipped protocol by more
-  than one receptor; at 2.5 Å pooling and rescoring triples it. AutoDock4 lands at 2.02,
-  2.15 and 2.52 Å, outside a 2 Å criterion three times over, which is why it has the best
-  mean and the worst hit count. Quoting one threshold would be a choice, not a measurement.
-- **More poses made ranking worse.** On the control, Vinardo picks 5.90 Å out of that
-  engine's own ten and 9.76 Å out of all forty-eight. A larger pool holds more
-  high-scoring decoys, so ensembling is not free.
-- **The gap is 4.15 Å against an oracle of 1.94 Å.** Fixing the sampling put a near-native
-  pose within reach for every receptor, and then no scoring function picked it. Ranking is
-  still the binding constraint, and more clearly than before.
+**Co-folding makes the answer findable.** A receptor co-folded with the ligand and then
+stripped of it is the one starting point where the search reliably produces a pose within
+1.5 Å. Its own predicted ligand placement is 4.5 to 4.8 Å out, which is why the pocket is
+kept and the ligand re-docked rather than believed.
 
-### The affinity head is not a rescoring function
+**Neither change touches sampling.** In four of the nine pose sets nothing near-native was
+ever generated, and no re-ranking reaches those. Flexible-receptor docking on this target
+is one of them: its whole pose set falls between 7.98 and 9.15 Å.
 
-The one methodologically different scorer available is the deep-learning affinity head the
-`affinity` stage already runs, so the control's ten poses went through it: 1.51 to 8.77 Å,
-same protein, same ligand, same cached alignment.
+**Predicted affinity is not a pose-quality signal.** Across poses spanning 1.5 to 8.8 Å the
+affinity head returns pIC50 within 0.2 log units, ranks an 8.30 Å pose first, and
+correlates with RMSD at ρ +0.26 (p 0.48). It is reported beside the score and never inside
+it.
 
-| | |
-|---|---|
-| pIC50 across ten poses | 6.538 to 6.732, a spread of **0.19 log units** |
-| RMSD across the same ten | 1.51 to 8.77 Å |
-| Ranked first | the 8.30 Å pose |
-| The 1.51 Å pose | 6.714, mid-pack, and identical to three decimals to the 8.77 Å pose |
-| Spearman ρ, pIC50 against RMSD | **+0.26 (p = 0.48)**, where a useful scorer needs a negative one |
-
-It does not discriminate between runs and it does not discriminate within a pose set
-either. This is the measured reason affinity is reported beside the composite score
-rather than inside it, and the reason it is not used to re-rank anything.
-
-Two honest limits across all of this. It is one target and one ligand, so the ordering of
-functions is an observation and not a recommendation. And the margins are narrow: on the
-control, Vina separates the right pose from the runner-up by 0.10 kcal/mol and Vinardo by
-0.41.
-
-### What the app does with all of it
-
-Three of these results changed the application rather than only the README:
-
-- **Co-folding is offered on Prepare.** Tick it and Boltz-2 folds the protein with your
-  ligand, the predicted ligand pose is thrown away, and the ligand is docked again into
-  the pocket that was built around it. It was the only starting structure whose
-  top-ranked pose was the right one. Its own ligand placement was 4.5 to 4.8 Å out, which
-  is why the pocket is kept and the pose re-derived rather than believed.
-- **Vinardo re-ranks the ten poses** and the disagreement is reported. It is not acted
-  on: it beat the shipped ranking on four receptors and lost on the one that worked, so
-  promoting its choice would improve the failures and spoil the success.
-- **MD rescue was removed from the score.** See the scorecard table above.
-
-And one did not. The docking engine is unchanged: the alternatives improved the mean
-across five receptors but were all slightly worse on the receptor now recommended.
-
-**This is the entire argument for the app.** Every one of these five runs produced a
-stable, physically valid complex with a confident docking score, and four of them were
-wrong by 4 to 9 Å. Nothing internal to a docking run distinguishes them. Only the
-comparison against the experimental structure does.
+One target, one ligand. Everything above is an observation on EGFR with erlotinib, not a
+general claim, and `docking.rank_by: engine` exists because of that.
 
 ## 🧫 Testing
 
@@ -566,7 +442,7 @@ Roadmap for GOBSMACKED, in dependency order. Suggestions welcome.
 - [x] **Affinity, before and after MD.** Built as stage 5 of six, on by default. Boltz-2's affinity head scores the docked pose and frames sampled from the last fifth of the trajectory, following the Boltzina pattern of feeding an existing pose straight to the affinity module with the structure module bypassed. Reported as pIC50, the raw log10(IC50/µM) and the binder probability for both, with the change between them and the spread across the sampled frames, and deliberately outside the composite score: every graded metric has a crystal to be right or wrong about, and a predicted affinity has none. It lives in its own pixi environment with `no-default-feature = true`, because boltz pins a torch that the docking environment must not inherit, and it never fails the run: a pose it cannot score becomes a missing panel with the reason attached
 - [x] **Every pose in the overlay, with the numbers that separate them.** All ten drawn at once, and per pose the docking score, in-place RMSD to the top pose, centroid separation, best-fit shape RMSD and closest approach to the receptor. In-place against best-fit is the pair that matters: the same conformer in two sites is a search problem, two different conformers is not
 - [x] **Make flex and hybrid docking actually run.** Four bugs, found only by using them rather than by reading them. `flex` treats `-o` as a filename prefix and writes to `<prefix>_results`, so every flex run appeared to produce nothing; `hybrid` accepts neither `--seed` nor `-e` and exits on either; the search radius was half the box's *longest* side, giving a sphere that reached well outside the box it was supposed to describe; and the GNN checkpoint had moved to a `v4` name and release URL, so `hybrid` silently fell back to the empirical scorer on every run
-- [x] **Five starting structures, one campaign.** The experiment above: same ligand, pocket, box, seed and MD protocol, varying only the structure docking starts from, with a self-dock control that is correct by construction. It found that the top-ranked pose, not the sampling and not the receptor, is what limits the result, and that neither starting-model quality nor predicted affinity separates a right pose from a wrong one
+- [x] **Five starting structures, one campaign.** Same ligand, pocket, box, seed and MD protocol, varying only the structure docking starts from, with a self-dock control that is correct by construction. It found that the top-ranked pose, not the sampling and not the receptor, is what limits the result, and that neither starting-model quality nor predicted affinity separates a right pose from a wrong one
 - [x] **Re-dock with alternative scoring functions, and test the affinity head as a re-ranker.** Twenty docking runs across the five receptors showed the apo sampling ceiling was a property of the search, not of the receptors: ESMFold's best available pose moves from 5.44 Å to 2.06 Å, and pooling every pose gives all five receptors something at 3.04 Å or better. No protocol tested picks it: 4.15 Å mean top-1 against a 1.94 Å oracle. The affinity head returns 0.19 log units of pIC50 across poses spanning 1.51 to 8.77 Å, ranks the 8.30 Å pose first, and correlates with RMSD at rho +0.26 (p 0.48), so it is not a rescoring function and is not used as one
 - [x] **Act on the five-structure findings, end to end.** Co-folding offered on Prepare (`fold.method: boltz2`, a checkbox rather than a structure-source entry, since the fetched structure still sizes the box), Vinardo re-ranking reported in the dock stage and shown beside the engine's own scores, MD rescue removed from the composite with its weight redistributed proportionally, and the predicted affinity's exclusion documented from measurement rather than principle. Prepare, bundle, results page and About all updated
 - [x] **Act on the ranking gap rather than only reporting it.** Vinardo now re-orders the poses and its choice is what goes to MD, after measuring nine pose sets: the engine put a pose within 2 Å first once, Vinardo four times, and on the run the engine got right it chose the same pose, so promoting it cost nothing. Consensus was tested at the same time and dropped, a three-way Borda count and an overrule rule both scoring identically to Vinardo alone. First end-to-end confirmation: the same co-folded receptor and the same search went from D 56.2 to **B 84.8**, ligand RMSD 8.72 Å to 1.62 Å, purely by carrying a different one of the ten poses forward
