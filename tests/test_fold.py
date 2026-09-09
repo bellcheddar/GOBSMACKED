@@ -279,3 +279,67 @@ def test_an_unmoved_box_is_not_reported_as_an_edit():
     assert runner._campaign_edits(same, {"center": [1.0, 2.0, 3.2]}) == []
     assert runner._campaign_edits({}, {}) == []
     assert runner._campaign_edits({"center": None}, {"center": [1, 2, 3]}) == []
+
+
+def test_the_box_correction_survives_a_resume(tmp_path):
+    """The re-centring lived in fold.cofold, and a resume skips fold because
+    fold.done exists. A co-folded run that failed in dock and retried came back
+    with the campaign's ORIGINAL centre and docked 36 A from its own receptor:
+    the retry silently undid the first attempt's fix while looking normal.
+
+    Derived from disk now, so it does not matter which stages are being rerun.
+    """
+    runner = _runner()
+    results = tmp_path / "results"
+    (results / "cofold").mkdir(parents=True)
+    (results / "cofold" / "cofold_ligand.sdf").write_text(
+        "x\n  GOBSMACKED\n\n  2  0  0  0  0  0  0  0  0  0999 V2000\n"
+        "    0.0000    0.0000    0.0000 C   0  0\n"
+        "   20.0000   10.0000    4.0000 O   0  0\n"
+        "M  END\n$$$$\n", encoding="utf-8")
+
+    class Log:
+        def __init__(self): self.said = []
+        def detail(self, m, **k): self.said.append(m)
+
+    log = Log()
+    campaign = {"pocket": {"center": [-9.87, 33.08, 14.14], "box": [30, 20, 23]}}
+    runner._apply_cofold_box(campaign, results, log)
+    assert campaign["pocket"]["center"] == [10.0, 5.0, 2.0]
+    assert campaign["pocket"]["box"] == [30, 20, 23], "only the centre moves"
+    assert log.said and "co-folded ligand" in log.said[0]
+
+
+def test_a_run_that_did_not_co_fold_is_left_alone(tmp_path):
+    """Every supplied-structure and ESMFold run goes through this."""
+    runner = _runner()
+    results = tmp_path / "results"
+    results.mkdir()
+    campaign = {"pocket": {"center": [1.0, 2.0, 3.0]}}
+
+    class Log:
+        def detail(self, m, **k): raise AssertionError("should not have spoken")
+
+    runner._apply_cofold_box(campaign, results, Log())
+    assert campaign["pocket"]["center"] == [1.0, 2.0, 3.0]
+
+
+def test_applying_it_twice_changes_nothing(tmp_path):
+    """It runs on every invocation, so it has to be idempotent or a second
+    resume would report a move of zero as though it were news."""
+    runner = _runner()
+    results = tmp_path / "results"
+    (results / "cofold").mkdir(parents=True)
+    (results / "cofold" / "cofold_ligand.sdf").write_text(
+        "x\n  GOBSMACKED\n\n  1  0  0  0  0  0  0  0  0  0999 V2000\n"
+        "    5.0000    5.0000    5.0000 C   0  0\nM  END\n$$$$\n", encoding="utf-8")
+    said = []
+
+    class Log:
+        def detail(self, m, **k): said.append(m)
+
+    campaign = {"pocket": {"center": [0.0, 0.0, 0.0]}}
+    runner._apply_cofold_box(campaign, results, Log())
+    runner._apply_cofold_box(campaign, results, Log())
+    assert campaign["pocket"]["center"] == [5.0, 5.0, 5.0]
+    assert len(said) == 1, "the second pass should be a no-op"

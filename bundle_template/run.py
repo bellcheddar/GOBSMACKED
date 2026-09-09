@@ -185,6 +185,19 @@ def main(argv=None) -> int:
     (results / "campaign.yaml").write_text(campaign_path.read_text(encoding="utf-8"), encoding="utf-8")
     original_pocket = dict((campaign.get("pocket") or {}))
 
+    # Applied here, from disk, on EVERY run rather than inside the fold stage.
+    #
+    # The re-centring used to live in fold.cofold, which is skipped on a resume
+    # because fold.done exists. So a co-folded run that failed in dock and
+    # retried came back with the campaign's original centre and docked 36 A from
+    # its own receptor: the retry silently undid the fix the first attempt had
+    # applied, and looked like a normal run while doing it.
+    #
+    # The co-folded ligand is already on disk, so the correction can be derived
+    # again instead of remembered. Idempotent, and it does not care which stages
+    # are being rerun.
+    _apply_cofold_box(campaign, results, log)
+
     timings: dict[str, float] = {}
     warnings: list[str] = []
     for index, name in enumerate(plan, start=1):
@@ -257,6 +270,29 @@ def main(argv=None) -> int:
     ordered = {name: timings[name] for name in STAGES if name in timings}
     log.summary(ordered, warnings, archive.relative_to(HERE), job_id)
     return 0
+
+
+def _apply_cofold_box(campaign: dict, results: Path, log) -> None:
+    """Move the docking box into the co-folded receptor's frame, if there is one.
+
+    Does nothing at all when the run did not co-fold, which is every run that
+    starts from a supplied or ESMFolded structure.
+    """
+    ligand = results / "cofold" / "cofold_ligand.sdf"
+    if not ligand.exists():
+        return
+    centre = fold._ligand_centre(ligand)
+    if centre is None:
+        return
+    pocket = campaign.setdefault("pocket", {})
+    was = list(pocket.get("center") or [])
+    if was and fold._distance(was, centre) is not None and fold._distance(was, centre) < 0.5:
+        return                                  # already in this frame
+    pocket["center"] = centre
+    moved = fold._distance(was, centre)
+    log.detail(f"box centre taken from the co-folded ligand: "
+               f"{[round(v, 2) for v in centre]}"
+               + (f", {moved:.1f} A from the campaign's" if moved is not None else ""))
 
 
 def _campaign_edits(before: dict, after: dict) -> list[str]:

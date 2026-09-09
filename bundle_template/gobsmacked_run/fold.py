@@ -210,6 +210,9 @@ def cofold(campaign: dict, sequence: str, work: Path, results: Path,
     # site is, which co-folding answers well; where the ligand sits inside it is
     # the question docking is for, and the one co-folding answers at 4.5 to
     # 4.8 A.
+    # run.py applies this from disk before every run, including a resume that
+    # skips this stage. Done here as well so the value is right for anything
+    # later in THIS process, and the two agree because both read the same file.
     centre = _ligand_centre(out_dir / "cofold_ligand.sdf")
     if centre is not None:
         was = list((campaign.get("pocket") or {}).get("center") or [])
