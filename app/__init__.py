@@ -35,10 +35,11 @@ def create_app(test_config: dict | None = None) -> Flask:
     config.ensure_dirs()
     db.init_db()
 
-    from .routes import prepare, analyze, runs, about
+    from .routes import prepare, analyze, runs, about, example
     app.register_blueprint(prepare.bp)
     app.register_blueprint(analyze.bp)
     app.register_blueprint(runs.bp)
+    app.register_blueprint(example.bp)
     app.register_blueprint(about.bp)
 
     @app.route("/")

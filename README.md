@@ -300,45 +300,43 @@ tests/                   160 tests, plus two fixture archives built from crystal
 software.yaml            the single source of truth for attribution
 ```
 
-## 🔬 A worked example
+## 🔬 A worked example: EGFR and erlotinib, six ways
 
-One real run, end to end, on an M1 Max: EGFR plus erlotinib, prepared on the live site,
-judged against 1M17.
+One campaign run six times on an M1 Max, changing two things and holding everything else:
+where the receptor comes from, and which docking mode searches it. Same sequence (P00533,
+kinase domain 714-966), same ligand, same pocket, same box, same reference crystal (1M17),
+same MD and affinity settings. Every run below is live and can be opened.
 
-![The results page for the real EGFR run: a grade D dial at 53.5, ligand RMSD 7.83 A graded F with the note that this usually means the wrong site rather than a scoring failure, MD drift 0.25 A graded A, the relaxed complex in Mol* with its PLIP interactions, and the kinase switch list reporting no hinge contact against the crystal's Type I](docs/screenshots/real-run.png)
+| Run | Receptor | Mode | Grade | Top pose | Best measured |
+|---|---|---|---|---|---|
+| [boltz2_hybrid-dock](https://gobsmacked.mdeller.com/runs/gs_20260909_zho3oqr4hlem) | co-folded | hybrid | **B 84.8** | **1.66 Å** | 1.43 Å* |
+| [boltz2_flex-dock](https://gobsmacked.mdeller.com/runs/gs_20260909_jq5tpzjs2xf6) | co-folded | flex | D 49.6 | 8.58 Å | 7.98 Å* |
+| [boltz2_dock](https://gobsmacked.mdeller.com/runs/gs_20260909_irczwdpxzhs7) | co-folded | dock | **B 87.4** | **1.59 Å** | 1.59 Å |
+| [hybrid-dock](https://gobsmacked.mdeller.com/runs/gs_20260909_mhxgoie3trgt) | AlphaFold | hybrid | D 56.2 | 7.44 Å | 6.52 Å* |
+| [flex-dock](https://gobsmacked.mdeller.com/runs/gs_20260909_lpqzx23moxjc) | AlphaFold | flex | D 51.2 | 8.44 Å | 7.25 Å* |
+| [dock](https://gobsmacked.mdeller.com/runs/gs_20260909_hggp2krjwh3e) | AlphaFold | dock | D 51.2 | 4.90 Å | 7.19 Å* |
 
-| Stage | Wall clock | What happened |
-|---|---|---|
-| fetch | seconds | AlphaFold model `AF-P00533-F1`, mean pLDDT 75.9 |
-| annotate | seconds | Pfam `PF07714` 714-966, KLIFS gatekeeper Thr790 |
-| prepare | seconds | 1M17's site renumbered onto the model (+24), box sized on erlotinib at 32 x 21 x 23 A |
-| prep | 3 s | trimmed 1,210 residues to the 253-residue kinase domain, all 51 pocket residues kept |
-| dock | 937 s | PandaDock empirical search, 10 poses, best score −15.5 kcal/mol |
-| md | 3,224 s | 58,266 atoms, OpenCL single precision, ~20 ns/day, 100 ps equilibration plus 500 ps production |
-| summarise | 106 s | 100 frames |
-| analyse | 28 s | on the droplet |
+**Top pose** is the pose carried into MD and graded. **Best measured** is a floor: the
+lowest RMSD the overlay panel measured, and `*` marks a run where that panel holds fewer
+poses than were docked, so the true best may be lower.
 
-**GOBSMACK 53.5, grade D.** The interesting part is what that decomposes into:
+**Co-folding is the variable that decides the outcome.** Two B grades from three co-folded
+receptors, none from three AlphaFold ones, with everything else identical. The AlphaFold
+pose sets never contain anything nearer than 6.5 Å, so nothing downstream can recover them:
+that is a sampling limit, not a scoring one. **Flexible-receptor docking failed on both
+receptors** and was the worst grade in each arm.
 
-| Metric | Value | Grade |
-|---|---|---|
-| Ligand RMSD | 7.83 Å | F |
-| PLIP overlap | 0.33 | D |
-| Pocket Cα RMSD | 1.66 Å | C |
-| χ1 agreement | 0.69 | C |
-| Drift, last window | 0.25 Å | A |
-| MD rescue | −0.75 Å | F |
+| Stage | co-fold + dock | co-fold + hybrid | co-fold + flex | AlphaFold + dock |
+|---|---|---|---|---|
+| fold | 229 s | 237 s | 233 s | — |
+| dock | 330 s | 540 s | **2,565 s** | 362 s |
+| MD | 816 s | 868 s | 818 s | 896 s |
+| affinity | 2,252 s | 2,286 s | 2,285 s | 2,279 s |
+| **total** | **61 min** | 66 min | 99 min | **60 min** |
 
-The pose is stable and physically valid: it does not move over 500 ps, it has no clash, its
-stereocentres are intact and it sits inside the box. It is also 8 Å from where erlotinib
-actually binds, it never touches the hinge, and the mode classifier calls it allosteric
-against the crystal's Type I. A docking score of −15.5 kcal/mol says nothing about any of
-that, which is the entire argument for scoring a prediction against the structure rather
-than against itself.
-
-This run predates co-folding and Vinardo re-ranking, and is kept as a worked example of the
-output rather than as a current result. The findings section below is what the pipeline is
-tuned on now.
+**Co-folding costs about four minutes**, the cheapest thing in the table after prep.
+**Flexible docking costs seven times plain docking** and bought nothing. **Affinity is the
+largest stage**, more than half of a 60-minute run, and it is optional.
 
 ## 🧪 What the pipeline was tuned on
 

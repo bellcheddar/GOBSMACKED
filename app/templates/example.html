@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}GOBSMACKED: a worked example{% endblock %}
+{% block content %}
+<main class="deck single">
+
+  <section class="card">
+    <h2>Does a predicted structure dock well enough to match a crystal?</h2>
+    <p>Structure prediction can now give you a protein model for almost any sequence. If you
+      want to know how a drug binds to it, you still have to dock the drug into that model,
+      and the honest question is whether the answer resembles what an X-ray experiment would
+      have shown you.</p>
+    <p>This page is one campaign that asks exactly that. The target is <b>EGFR</b>, the drug is
+      <b>erlotinib</b>, and the answer is already known: crystal structure <b>1M17</b> shows
+      where erlotinib really sits. So every prediction here can be marked against it.</p>
+    <p class="note">The measure throughout is <b>RMSD</b>, the average distance between the
+      predicted drug and the real one. Under 2 &#8491; is normally called a success; 8 &#8491;
+      is the width of the pocket, and means the prediction is simply in the wrong place.</p>
+  </section>
+
+  <section class="card">
+    <h2>Six runs, two things changed</h2>
+    <p>Everything was held constant except two choices: <b>where the protein model came
+      from</b>, and <b>which docking method searched it</b>. Each run links to its full
+      scorecard.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Run</th><th>Protein model</th><th>Docking</th>
+          <th class="num">Distance from the crystal</th><th>Grade</th><th class="num">Time</th></tr></thead>
+        <tbody>
+          {% for r in runs %}
+          <tr class="{{ 'chosen' if r.grade == 'B' }}">
+            <td><a href="{{ url_for('runs.run_page', job_id=r.job) }}">{{ r.name }}</a></td>
+            <td>{{ r.receptor }}</td>
+            <td>{{ r.mode }}</td>
+            <td class="num {{ 'good' if r.rmsd <= 2 }}">{{ '%.2f'|format(r.rmsd) }} &#8491;</td>
+            <td><span class="grade-tile {{ r.grade }}">{{ r.grade }}</span> {{ r.score }}</td>
+            <td class="num">{{ r.minutes }} min</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>What it means</h2>
+
+    <h3>Docking straight into an AlphaFold model did not work</h3>
+    <p>All three AlphaFold runs put erlotinib between 4.9 and 8.4 &#8491; from where it really
+      binds. Changing the docking method did not rescue them. The reason is not that the
+      protein model is bad &mdash; its binding site is within 1 &#8491; of the crystal &mdash;
+      but that the docking search never generated a good answer to choose from. Nothing later
+      in the pipeline can recover a right answer that was never proposed.</p>
+
+    <h3>Folding the protein together with the drug did work</h3>
+    <p>The winning runs do something different first: they fold the protein <i>and the drug
+      together</i>, then throw the predicted drug position away and keep only the protein.
+      That protein has a pocket shaped around this drug, and docking into it finds the right
+      answer &mdash; <b>1.59 and 1.66 &#8491;</b>, both graded B.</p>
+    <p class="note">The predicted drug position is discarded on purpose: it is 4.5 to 4.8
+      &#8491; out on its own. The prediction is good at building the pocket and poor at
+      placing the molecule inside it, so this pipeline takes the pocket and re-does the
+      placement.</p>
+
+    <h3>Picking the right answer matters as much as finding it</h3>
+    <p>Docking returns ten candidate positions and ranks them. That ranking is often wrong:
+      in one run the correct position was there but ranked eighth, and the run scored a D. A
+      second scoring function now re-ranks the ten and chooses which goes forward, which
+      turned that same run into a <b>B</b> without changing anything else.</p>
+
+    <h3>The slowest option was the worst option</h3>
+    <p>"Flexible" docking, which lets the protein move during the search, took seven times
+      longer than standard docking and produced the poorest result on both protein models.
+      More computation is not more accuracy.</p>
+  </section>
+
+  <section class="card">
+    <h2>The short version</h2>
+    <ul class="switches">
+      <li><span><i class="led"></i>Fold the protein with the drug, then re-dock</span>
+        <span>1.6 &#8491; from the crystal</span></li>
+      <li><span><i class="led off"></i>Dock into an AlphaFold model directly</span>
+        <span>4.9 to 8.4 &#8491;</span></li>
+      <li><span><i class="led"></i>Let a second scorer choose the pose</span>
+        <span>turned a D into a B</span></li>
+      <li><span><i class="led off"></i>Spend seven times longer on flexible docking</span>
+        <span>worst result in both arms</span></li>
+    </ul>
+    <p class="note">One target and one drug, six runs. This is a worked example, not a
+      benchmark: it shows what the pipeline measures and how the answers differ, and the same
+      campaign on another target could come out differently. That is the point of checking
+      every prediction against a structure rather than trusting a docking score.</p>
+  </section>
+
+</main>
+{% endblock %}

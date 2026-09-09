@@ -20,6 +20,7 @@
       <a href="{{ url_for('prepare.prepare_page') }}" {% if tab == 'prepare' %}class="current"{% endif %}>Prepare</a>
       <a href="{{ url_for('analyze.analyze_page') }}" {% if tab == 'analyze' %}class="current"{% endif %}>Analyze</a>
       <a href="{{ url_for('runs.runs_page') }}" {% if tab == 'runs' %}class="current"{% endif %}>Runs</a>
+      <a href="{{ url_for('example.example_page') }}" {% if tab == 'example' %}class="current"{% endif %}>Example</a>
       <a href="{{ url_for('about.about_page') }}" {% if tab == 'about' %}class="current"{% endif %}>About</a>
     </nav>
     {#- The run's identity, on every page that has one: the ID, and under it the
