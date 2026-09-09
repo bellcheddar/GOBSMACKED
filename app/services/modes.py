@@ -1,4 +1,4 @@
-"""Binding-mode classification: GATEKEEPER.
+"""Binding-mode classification.
 
 Two families get a real answer and everything else gets an honest one.
 
