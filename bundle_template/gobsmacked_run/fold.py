@@ -157,7 +157,10 @@ def cofold(campaign: dict, sequence: str, work: Path, results: Path,
     cmd = aff.boltz_command(yaml_path, boltz_work, campaign.get("fold") or {}, msa)
     # No template here, so the structure module is doing the work rather than
     # being steered, and --use_potentials is left as boltz_command sets it.
-    log(f"fold: co-folding {len(sequence)} residues with the ligand, Boltz-2")
+    # len(folded_sequence), not len(sequence). It printed the whole precursor's
+    # length one line after saying it was folding 253 of it, so the two lines
+    # contradicted each other and the wrong one was the more prominent.
+    log(f"fold: co-folding {len(folded_sequence)} residues with the ligand, Boltz-2")
     # run_with_progress, not subprocess.run. This blocks for about a quarter of
     # an hour, and the bar only redraws when something calls update: under
     # subprocess.run it painted "0s" once and then sat there, which reads as a
