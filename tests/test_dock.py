@@ -202,3 +202,60 @@ def test_ten_does_not_sort_before_one(tmp_path):
     for i in (10, 2, 1):
         (d / f"complex{i}.pdb").write_text("ATOM\n")
     assert find_top_complex(d).name == "complex1.pdb"
+
+
+# --- Vinardo decides which pose goes forward ---------------------------------
+# Measured across nine pose sets: the engine put a pose within 2 A of the crystal
+# first once; Vinardo did it four times; and on the run the engine got right,
+# Vinardo picked the same pose.
+
+def test_poses_are_reordered_not_relabelled(tmp_path):
+    """"Pose 1" has to mean the same thing in poses.sdf, scores.csv,
+    complex_pose1.pdb and on the results page. Leaving the file in engine order
+    while carrying a different complex forward would put the overlay and the
+    scorecard on different molecules."""
+    from gobsmacked_run.dock import reorder_poses
+    sdf = tmp_path / "poses.sdf"
+    sdf.write_text("".join(f"MOL{i}\nblock\n$$$$\n" for i in (1, 2, 3)), encoding="utf-8")
+    reorder_poses(sdf, [3, 1, 2])
+    records = [r.strip() for r in sdf.read_text(encoding="utf-8").split("$$$$") if r.strip()]
+    assert [r.splitlines()[0] for r in records] == ["MOL3", "MOL1", "MOL2"]
+
+
+def test_a_count_mismatch_leaves_the_file_untouched(tmp_path):
+    """Silently reordering a file whose records do not match the scores would
+    scramble which pose is which, which is worse than not reordering."""
+    from gobsmacked_run.dock import reorder_poses
+    sdf = tmp_path / "poses.sdf"
+    original = "MOL1\n$$$$\nMOL2\n$$$$\n"
+    sdf.write_text(original, encoding="utf-8")
+    reorder_poses(sdf, [3, 2, 1])
+    assert sdf.read_text(encoding="utf-8") == original
+
+
+def test_the_engines_rank_is_kept_as_a_column(tmp_path):
+    """Its opinion is being overruled, not deleted."""
+    from gobsmacked_run.dock import reorder_scores
+    rows = [{"pose_id": f"pose{i}", "score": -10.0 + i, "gnn_affinity": None, "rank": i}
+            for i in (1, 2, 3)]
+    csv_path = tmp_path / "scores.csv"
+    moved = reorder_scores(csv_path, rows, [3, 1, 2])
+    assert [r["pose_id"] for r in moved] == ["pose3", "pose1", "pose2"]
+    assert [r["rank"] for r in moved] == [1, 2, 3]
+    assert [r["engine_rank"] for r in moved] == [3, 1, 2]
+    body = csv_path.read_text(encoding="utf-8")
+    assert body.splitlines()[0].endswith("engine_rank")
+
+
+def test_the_complex_follows_the_promoted_pose(tmp_path):
+    """PandaDock names its complexes by ITS ranking, so promoting pose 8 means
+    carrying complex8.pdb, not the first file on disk."""
+    from gobsmacked_run.dock import find_top_complex
+    d = tmp_path / "d"
+    d.mkdir()
+    for i in range(1, 11):
+        (d / f"complex{i}.pdb").write_text("ATOM\n")
+    assert find_top_complex(d, engine_rank=8).name == "complex8.pdb"
+    assert find_top_complex(d).name == "complex1.pdb"
+    # A rank with no file falls back rather than failing the run.
+    assert find_top_complex(d, engine_rank=99).name == "complex1.pdb"

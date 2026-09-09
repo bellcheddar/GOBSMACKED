@@ -101,27 +101,52 @@ def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     shutil.copy(poses, poses_dir / "poses.sdf")
 
     scores = write_scores(out_dir, poses_dir / "scores.csv", log)
-    top_complex = find_top_complex(out_dir)
+
+    # A second function re-ranks the same ten poses, and by default its choice is
+    # the one carried forward. Measured across nine pose sets: the engine put a
+    # pose within 2 A of the crystal first once, Vinardo did it four times, and
+    # on the run the engine got right Vinardo picked the same pose.
+    second = rescore.run(receptor, poses_dir / "poses.sdf",
+                         poses_dir / "rescore.csv", log)
+    rank_by = str(docking.get("rank_by", "vinardo")).lower()
+    engine_order = list(range(1, len(scores) + 1))
+    order = engine_order
+    if rank_by != "engine" and second.get("ran"):
+        order = list(second["ranking"])
+    elif rank_by != "engine":
+        log(f"rescore: keeping the engine's ranking, {second.get('reason')}")
+        warnings.append(
+            f"The second scoring function could not run ({second.get('reason')}), so the "
+            f"docking engine's own ranking was used.")
+
+    # Reordered rather than merely relabelled, so "pose 1" means the same thing
+    # in poses.sdf, in scores.csv, in complex_pose1.pdb and on the results page.
+    # Leaving the file in engine order while carrying a different complex forward
+    # would put the overlay and the scorecard on different molecules.
+    if order != engine_order:
+        reorder_poses(poses_dir / "poses.sdf", order)
+        scores = reorder_scores(poses_dir / "scores.csv", scores, order)
+        log(f"rescore: {second['function']} ranks pose {order[0]} first; the poses were "
+            f"reordered and that one goes to MD")
+        warnings.append(
+            f"The docking engine ranked its own pose {order[0]} at position "
+            f"{engine_order.index(order[0]) + 1} of {len(order)}. A second scoring function "
+            f"({second['function']}) placed it first, and it is the pose carried forward. "
+            f"Both sets of scores are in poses/, and the engine's original rank is a column "
+            f"in scores.csv.")
+
+    top_complex = find_top_complex(out_dir, engine_rank=order[0] if order else 1)
     if top_complex is None:
         raise RuntimeError("PandaDock wrote no complex for the top pose.")
     shutil.copy(top_complex, results / "complex_pose1.pdb")
 
-    # A second function's opinion of the same ten poses, written beside the
-    # scores it is second-guessing. It changes nothing downstream: pose 1 stays
-    # pose 1 and is what MD relaxes and the scorecard grades.
-    second = rescore.run(receptor, poses_dir / "poses.sdf",
-                         poses_dir / "rescore.csv", log)
-    if second.get("ran") and not second.get("agrees"):
-        warnings.append(
-            f"A second scoring function ({second['function']}) would have ranked pose "
-            f"{second['top_pose']} first rather than pose 1. The pipeline carried pose 1 "
-            f"forward regardless; both sets of scores are in poses/.")
-    elif not second.get("ran"):
+    if not second.get("ran"):
         log(f"rescore: skipped, {second.get('reason')}")
 
     best = scores[0]["score"] if scores else None
     return {"warnings": warnings, "mode": mode, "poses": len(scores),
-            "best_score": best, "rescore": second,
+            "best_score": best, "rescore": second, "ranked_by": rank_by,
+            "engine_rank_of_top": engine_order.index(order[0]) + 1 if order else None,
             "headline": f"{len(scores)} poses, best {best} kcal/mol" if scores else "no poses"}
 
 
@@ -386,7 +411,7 @@ def scores_from_sdf(path: Path) -> list[dict]:
     return rows
 
 
-def find_top_complex(out_dir: Path) -> Optional[Path]:
+def find_top_complex(out_dir: Path, engine_rank: int = 1) -> Optional[Path]:
     """The receptor-plus-ligand PDB for the best pose, whatever the mode named it.
 
     The three modes do not agree on filenames. `dock` and `hybrid` write
@@ -406,6 +431,14 @@ def find_top_complex(out_dir: Path) -> Optional[Path]:
     def rank(path: Path) -> int:
         digits = "".join(c for c in path.stem if c.isdigit())
         return int(digits) if digits else 0
+
+    # `engine_rank` is the position in the ENGINE's ordering, because that is
+    # what PandaDock named its files after. When a second scoring function
+    # promotes a different pose, the complex to carry forward is that pose's,
+    # not the first file on disk.
+    by_rank = {rank(p): p for p in sorted(candidates, key=rank)}
+    if engine_rank in by_rank:
+        return by_rank[engine_rank]
     return sorted(candidates, key=rank)[0]
 
 
@@ -414,3 +447,41 @@ def _number(value) -> Optional[float]:
         return round(float(value), 4)
     except (TypeError, ValueError):
         return None
+
+
+def reorder_poses(sdf: Path, order: list[int]) -> None:
+    """Rewrite poses.sdf so the carried-forward pose is first.
+
+    Records are split on the "$$$$" terminator rather than parsed: this only
+    moves whole records, and reading the chemistry to reorder a file would be a
+    way to lose an SD tag that something downstream reads.
+    """
+    text = sdf.read_text(encoding="utf-8")
+    records = [r for r in text.split("$$$$") if r.strip()]
+    if len(records) != len(order):
+        return                       # counts disagree: leave the file alone
+    moved = [records[i - 1] for i in order]
+    sdf.write_text("$$$$".join(moved) + "$$$$\n", encoding="utf-8")
+
+
+def reorder_scores(csv_path: Path, rows: list[dict], order: list[int]) -> list[dict]:
+    """The same reordering for scores.csv, keeping the engine's rank as a column.
+
+    Nothing is thrown away: the engine's opinion is still readable, and the
+    pose_id still identifies which of the engine's poses this row is.
+    """
+    if len(rows) != len(order):
+        return rows
+    moved = []
+    for position, engine_rank in enumerate(order, start=1):
+        row = dict(rows[engine_rank - 1])
+        row["engine_rank"] = row.get("rank", engine_rank)
+        row["rank"] = position
+        moved.append(row)
+    fields = ["pose_id", "score", "gnn_affinity", "rank", "engine_rank"]
+    with open(csv_path, "w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        for row in moved:
+            writer.writerow(row)
+    return moved

@@ -12,11 +12,25 @@ nothing and changes no output the rest of the pipeline reads: pose 1 remains
 pose 1 and the scorecard still grades it. What it adds is a second column, and a
 sentence when the two functions disagree about which pose deserved the top slot.
 
-Deliberately not used to reorder the poses. Vinardo was better than the shipped
-ranking on average across those five receptors (mean top-1 3.50 A against
-6.06 A) and worse on the one receptor that actually worked, so promoting its
-choice would have improved four runs and spoiled the best one. Reporting the
-disagreement leaves that judgement with the reader, who can see both numbers.
+It now decides which pose goes forward, and the reason it took a while to get
+there is worth recording. The first version reported the disagreement and did
+not act on it, on the grounds that Vinardo lost on the one receptor that
+worked. That comparison was wrong: it came from a re-DOCKING sweep, not from
+re-ranking the shipped poses. Measured properly, across nine pose sets whose
+distance to the crystal is known:
+
+    engine   1/9 within 2 A, mean 7.02 A
+    Vinardo  4/9 within 2 A, mean 4.03 A
+
+and on the run the engine got right, Vinardo picks the same pose. There was no
+case where promoting it cost anything, which removed the only argument against.
+
+Consensus was tested at the same time and dropped: a three-way Borda count and a
+"Vinardo unless the other two overrule" rule both scored 4/9 and a mean of 4.03,
+identical to Vinardo alone to two decimals. The machinery would have bought
+nothing.
+
+One target and one ligand, so `docking.rank_by: engine` turns it off.
 """
 
 from __future__ import annotations

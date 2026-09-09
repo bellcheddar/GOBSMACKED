@@ -170,6 +170,25 @@ def fold_block(fold: dict | None) -> dict:
     return {"method": method if method in ("esmfold", "boltz2") else "esmfold"}
 
 
+def docking_block(docking: dict) -> dict:
+    """Docking settings, including which scoring function decides pose 1.
+
+    `rank_by` defaults to vinardo. Across nine pose sets whose distance to the
+    crystal was known, the docking engine's own ranking put a pose within 2 A
+    first once; Vinardo did it four times; and on the run the engine got right,
+    Vinardo chose the same pose. `engine` restores the previous behaviour, which
+    matters because that evidence is one target and one ligand.
+    """
+    rank_by = str(docking.get("rank_by", "vinardo")).lower()
+    return {
+        "mode": docking.get("mode", "hybrid"),
+        "num_poses": int(docking.get("num_poses", 10) or 10),
+        "exhaustiveness": int(docking.get("exhaustiveness", 16) or 16),
+        "rank_by": rank_by if rank_by in ("vinardo", "engine") else "vinardo",
+        "flexible_residues": docking.get("flexible_residues", "auto"),
+    }
+
+
 def build_campaign(job_id: str, protein: dict, ligand: dict, pocket: dict,
                    reference: dict, docking: dict, md: dict, affinity: dict | None = None,
                    owner_token: str = "", title: str = "", fold: dict | None = None) -> dict:
@@ -206,13 +225,11 @@ def build_campaign(job_id: str, protein: dict, ligand: dict, pocket: dict,
             "ligand_ccd": reference.get("ligand_ccd"),
             "apo_pdb_id": reference.get("apo_pdb_id"),
         },
-        "docking": {
-            "mode": docking.get("mode", "hybrid"),
-            "exhaustiveness": int(docking.get("exhaustiveness", 16)),
-            "num_poses": int(docking.get("num_poses", 10)),
-            "flexible_residues": docking.get("flexible_residues", "auto"),
-        },
+        "docking": docking_block(docking),
         "md": {
+            # Relax both candidate poses when the two scoring functions
+            # disagreed. Off by default: it doubles the most expensive stage.
+            "dual_on_disagreement": bool(md.get("dual_on_disagreement", False)),
             "forcefield": md.get("forcefield", "amber14"),
             "ligand_forcefield": md.get("ligand_forcefield", "openff-2.1.0"),
             "minimise_steps": int(md.get("minimise_steps", 5000)),

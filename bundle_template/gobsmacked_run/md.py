@@ -35,6 +35,20 @@ RESTRAINT_STEPS = 5
 LIGAND_RESIDUE_NAME = "LIG"
 
 
+def dual_requested(campaign: dict) -> bool:
+    """Relax BOTH candidate poses when the two scoring functions disagreed.
+
+    Off by default, because it doubles the most expensive stage. On, it is the
+    honest answer to a disagreement: this application's whole argument is that
+    you cannot tell which pose is right without checking it against the
+    structure, so when two scorers disagree, check both rather than bet.
+
+    It only does anything when there was a disagreement. Two functions naming
+    the same pose leave nothing to compare.
+    """
+    return bool((campaign.get("md") or {}).get("dual_on_disagreement", False))
+
+
 def run(campaign: dict, work: Path, results: Path, log) -> dict[str, Any]:
     # openff-toolkit pulls in torch and the whole SMIRNOFF machinery, which on a
     # cold cache and a busy machine took sixteen minutes to import on the first
