@@ -157,3 +157,48 @@ def test_flex_output_is_looked_for_where_flex_writes_it(tmp_path):
     # And when flex did write where it was asked, that is what is used.
     (asked / "poses.sdf").write_text("", encoding="utf-8")
     assert dock.actual_output_dir(asked, "flex") == asked
+
+
+# --- every mode names its top complex differently ----------------------------
+
+def test_the_top_complex_is_found_whatever_the_mode_called_it(tmp_path):
+    """dock and hybrid write complex1.pdb; flex writes
+    complexes/flex_complex_1.pdb. Globbing "complex*.pdb" matched the first two
+    and missed the third, so a flex run that had succeeded died with "PandaDock
+    wrote no complex for the top pose" after forty-five minutes, with all ten
+    complexes on disk under a name the glob could not see."""
+    from gobsmacked_run.dock import find_top_complex
+
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    for i in (1, 2, 10):
+        (plain / f"complex{i}.pdb").write_text("ATOM\n")
+    assert find_top_complex(plain).name == "complex1.pdb"
+
+    flex = tmp_path / "flex" / "complexes"
+    flex.mkdir(parents=True)
+    for i in range(1, 11):
+        (flex / f"flex_complex_{i}.pdb").write_text("ATOM\n")
+        (flex / f"flex_ligand_{i}.pdb").write_text("ATOM\n")
+    assert find_top_complex(tmp_path / "flex").name == "flex_complex_1.pdb"
+
+
+def test_a_ligand_only_file_is_never_mistaken_for_a_complex(tmp_path):
+    """flex writes flex_ligand_N.pdb beside the complexes. Handing one to MD
+    would solvate a ligand with no receptor rather than fail."""
+    from gobsmacked_run.dock import find_top_complex
+    d = tmp_path / "d" / "complexes"
+    d.mkdir(parents=True)
+    (d / "flex_ligand_1.pdb").write_text("ATOM\n")
+    assert find_top_complex(tmp_path / "d") is None
+    (d / "flex_complex_3.pdb").write_text("ATOM\n")
+    assert find_top_complex(tmp_path / "d").name == "flex_complex_3.pdb"
+
+
+def test_ten_does_not_sort_before_one(tmp_path):
+    from gobsmacked_run.dock import find_top_complex
+    d = tmp_path / "d"
+    d.mkdir()
+    for i in (10, 2, 1):
+        (d / f"complex{i}.pdb").write_text("ATOM\n")
+    assert find_top_complex(d).name == "complex1.pdb"

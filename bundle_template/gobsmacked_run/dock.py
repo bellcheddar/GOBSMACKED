@@ -387,9 +387,19 @@ def scores_from_sdf(path: Path) -> list[dict]:
 
 
 def find_top_complex(out_dir: Path) -> Optional[Path]:
-    candidates = sorted(out_dir.glob("complex*.pdb"))
-    if not candidates:
-        candidates = sorted(out_dir.rglob("complex*.pdb"))
+    """The receptor-plus-ligand PDB for the best pose, whatever the mode named it.
+
+    The three modes do not agree on filenames. `dock` and `hybrid` write
+    complex1.pdb; `flex` writes complexes/flex_complex_1.pdb. Globbing
+    "complex*.pdb" matched the first two and silently missed the third, so every
+    flex run died with "PandaDock wrote no complex for the top pose" after
+    forty-five minutes of work that had in fact succeeded -- all ten complexes
+    were on disk under a name the glob could not see.
+    """
+    candidates = [p for p in out_dir.rglob("*.pdb") if "complex" in p.stem.lower()]
+    # "ligand" files sit beside them and are the pose alone, which would give MD
+    # a ligand with no receptor rather than an error.
+    candidates = [p for p in candidates if "ligand" not in p.stem.lower()]
     if not candidates:
         return None
     # complex1.pdb is rank 1; sorting lexically would put complex10 before it.
