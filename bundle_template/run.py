@@ -240,6 +240,26 @@ def main(argv=None) -> int:
             except (json.JSONDecodeError, TypeError, ValueError):
                 continue
 
+    # BEFORE the manifest and before pack. This block used to sit after
+    # summarise.pack, so it rewrote a campaign.yaml that had already been sealed
+    # into the archive: two co-folded runs graded F 40.0 on "ligand inside the
+    # docking box" with the corrected centre nowhere in the tarball. Anything
+    # that edits the results directory has to happen before the directory is
+    # packed, and the warning has to exist before the manifest records warnings.
+    #
+    # Co-folding is the case that exists: it moves the docking box into the
+    # frame of the receptor it just built, 36 A on a real run. Prepare computed
+    # that box in a different structure's frame, so the server's validity check
+    # measured against a centre nowhere near the pose and capped a run whose
+    # pose was in exactly the right place.
+    edits = _campaign_edits(original_pocket, campaign.get("pocket") or {})
+    if edits:
+        (results / "campaign.yaml").write_text(
+            yaml.safe_dump(campaign, sort_keys=False), encoding="utf-8")
+        warnings.extend(edits)
+        for edit in edits:
+            log.detail(edit)
+
     schema.write_manifest(results, job_id, campaign_path, timings, warnings)
     missing = schema.check_complete(results)
     if missing:
@@ -250,23 +270,6 @@ def main(argv=None) -> int:
 
     # Top level, beside run.py: see summarise.pack for why not inside results/.
     archive = summarise.pack(results, HERE / "results.tar.gz", log)
-    # The stages may have corrected the campaign, and the archived copy has to
-    # say so or every consumer downstream reads a value that was not used.
-    #
-    # Co-folding is the case that exists: it moves the docking box into the
-    # frame of the receptor it just built, 36 A on a real run. The box written
-    # here was the one Prepare computed in a different structure's frame, so the
-    # server's "is the ligand inside the docking box" check measured against a
-    # centre nowhere near the pose, failed, and capped a run at 40 for a pose
-    # that was in exactly the right place.
-    edits = _campaign_edits(original_pocket, campaign.get("pocket") or {})
-    if edits:
-        (results / "campaign.yaml").write_text(
-            yaml.safe_dump(campaign, sort_keys=False), encoding="utf-8")
-        warnings.extend(edits)
-        for edit in edits:
-            log.detail(edit)
-
     ordered = {name: timings[name] for name in STAGES if name in timings}
     log.summary(ordered, warnings, archive.relative_to(HERE), job_id)
     return 0

@@ -343,3 +343,22 @@ def test_applying_it_twice_changes_nothing(tmp_path):
     runner._apply_cofold_box(campaign, results, Log())
     assert campaign["pocket"]["center"] == [5.0, 5.0, 5.0]
     assert len(said) == 1, "the second pass should be a no-op"
+
+
+def test_the_campaign_is_rewritten_before_the_archive_is_sealed():
+    """An ordering bug that cost two runs.
+
+    The rewrite sat after summarise.pack, so it edited a campaign.yaml that was
+    already inside the tarball. Both co-folded runs graded F 40.0 on "ligand
+    inside the docking box" with the corrected centre nowhere in the archive.
+    Checked positionally, because the code was correct and only its place was
+    wrong -- nothing about the block itself would have revealed this.
+    """
+    from pathlib import Path
+    source = (Path(__file__).resolve().parents[1] / "bundle_template" / "run.py"
+              ).read_text(encoding="utf-8")
+    edits = source.index("edits = _campaign_edits(")
+    manifest = source.index("schema.write_manifest(")
+    pack = source.index("archive = summarise.pack(")
+    assert edits < manifest, "the warning must exist before the manifest records warnings"
+    assert manifest < pack, "the manifest must be written before the archive is packed"
