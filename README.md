@@ -14,7 +14,7 @@
 
 ---
 
-![The scorecard for EGFR plus erlotinib judged against crystal structure 1M17: a grade B dial at 83.5, six graded gauges each with a sentence explaining what to do about it, the relaxed complex in Mol*, PandaMap's 2D interaction diagram, and the kinase switch list reporting DFG-in, alphaC-out and a Type I binding mode matching the crystal](docs/screenshots/scorecard.png)
+![The GOBSMACK scorecard for the co-folded EGFR run: a grade B dial at 87.4, five graded gauges each with a sentence saying what the number means, and the relaxed complex beside it](docs/screenshots/scorecard.png)
 
 ## What this is asking
 
@@ -81,7 +81,7 @@ the scorecard says so rather than reporting a confident wrong answer.
 
 The heavy compute does not run on the server. ESMFold, the PandaDock GNN and OpenMM need a GPU and several gigabytes; the host is a shared CPU droplet with 3.8 GB. So the work is split in two, with an archive passing between them.
 
-![The pipeline: Prepare on the droplet fetches, annotates, picks the pocket and the reference, and emits run_bundle.tar.gz; Run on your GPU folds, preps, docks, runs MD and summarises into results.tar.gz; Analyze on the droplet superposes, runs the interaction analysis, grades, classifies the binding mode and draws the dynamics](docs/screenshots/pipeline.png)
+![The pipeline schematic from the About tab: Prepare on the server fetches, annotates, picks the pocket and the reference; the run bundle folds or co-folds, preps, docks, re-ranks, runs MD, scores affinity and summarises; Analyze superposes on the crystal and grades](docs/screenshots/pipeline.png)
 
 | Stage | Where | What happens |
 |---|---|---|
@@ -131,7 +131,7 @@ Four panels, each unlocking the next.
 | **3. Ligand and pocket** | SMILES, plus residues clicked in Mol* or on the sequence track | RDKit validates and draws the ligand; the docking box is the selection's extent plus 8 Å, floored at 18 Å per side |
 | **4. Reference** | (automatic, or a typed PDB ID) | RCSB entries mapped to the accession, ranked by Morgan Tanimoto against your ligand, with resolution and a 2D depiction |
 
-![The Prepare tab: the four input panels on the left and right, an empty Mol* scope in the centre waiting for a structure, and the seven-cell stage strip across the top showing what the bundle will run](docs/screenshots/prepare.png)
+![The Prepare tab: the protein panel with the co-fold checkbox, annotation, the ligand and pocket picker, and the reference panel, with the stage strip across the top](docs/screenshots/prepare.png)
 
 **Trim to the domain.** An AlphaFold model is of the whole precursor. EGFR's is 1,210 residues, of which the kinase domain is 253: solvating the other 957 costs an order of magnitude in MD time, adds two disordered tails that wander through the box, and tells you nothing about the pocket.
 
@@ -209,7 +209,7 @@ Every gauge carries one plain sentence saying what the number means and what to 
 
 Model in grey, MD-final in phosphor, the crystal in amber, all superposed on the pocket, with the ten most displaced side chains and their χ1 angles listed underneath.
 
-![The three-way overlay for the beta-2 adrenergic receptor: the relaxed complex in cyan and crystal structure 2RH1 in amber, superposed on 53 pocket Ca atoms at TM 0.999, with carazolol drawn in pink, above a table of the most displaced pocket side chains with their chi1 angles in the model and in the crystal](docs/screenshots/overlay.png)
+![The overlay panel: the relaxed complex in phosphor cyan and crystal structure 1M17 in amber, superposed on the pocket, with erlotinib drawn in both positions](docs/screenshots/overlay.png)
 
 ### 🧲 Affinity, before and after MD
 
@@ -301,6 +301,8 @@ software.yaml            the single source of truth for attribution
 ```
 
 ## 🔬 A worked example: EGFR and erlotinib, six ways
+
+![The Example tab: the six runs in one table with their grades and distances from the crystal, above four plain-language findings about what the campaign showed](docs/screenshots/example.png)
 
 One campaign run six times on an M1 Max, changing two things and holding everything else:
 where the receptor comes from, and which docking mode searches it. Same sequence (P00533,
