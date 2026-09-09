@@ -179,8 +179,11 @@ def main(argv=None) -> int:
         return 0
 
     # campaign.yaml is echoed into the results so the server sees exactly what
-    # ran, including any edit made here between generating and running.
+    # ran, including any edit made here between generating and running. Written
+    # now so a run that dies mid-stage still carries it, and written again at the
+    # end from the in-memory campaign, because a stage can correct it.
     (results / "campaign.yaml").write_text(campaign_path.read_text(encoding="utf-8"), encoding="utf-8")
+    original_pocket = dict((campaign.get("pocket") or {}))
 
     timings: dict[str, float] = {}
     warnings: list[str] = []
@@ -234,9 +237,44 @@ def main(argv=None) -> int:
 
     # Top level, beside run.py: see summarise.pack for why not inside results/.
     archive = summarise.pack(results, HERE / "results.tar.gz", log)
+    # The stages may have corrected the campaign, and the archived copy has to
+    # say so or every consumer downstream reads a value that was not used.
+    #
+    # Co-folding is the case that exists: it moves the docking box into the
+    # frame of the receptor it just built, 36 A on a real run. The box written
+    # here was the one Prepare computed in a different structure's frame, so the
+    # server's "is the ligand inside the docking box" check measured against a
+    # centre nowhere near the pose, failed, and capped a run at 40 for a pose
+    # that was in exactly the right place.
+    edits = _campaign_edits(original_pocket, campaign.get("pocket") or {})
+    if edits:
+        (results / "campaign.yaml").write_text(
+            yaml.safe_dump(campaign, sort_keys=False), encoding="utf-8")
+        warnings.extend(edits)
+        for edit in edits:
+            log.detail(edit)
+
     ordered = {name: timings[name] for name in STAGES if name in timings}
     log.summary(ordered, warnings, archive.relative_to(HERE), job_id)
     return 0
+
+
+def _campaign_edits(before: dict, after: dict) -> list[str]:
+    """What a stage changed about the pocket, in words, for the archive.
+
+    Only reports a move worth mentioning: a re-centre of a fraction of an
+    Angstrom is rounding, not a decision anyone needs to read about.
+    """
+    a, b = before.get("center"), after.get("center")
+    if not (a and b and len(a) == 3 and len(b) == 3):
+        return []
+    moved = sum((float(x) - float(y)) ** 2 for x, y in zip(a, b)) ** 0.5
+    if moved < 0.5:
+        return []
+    return [f"The docking box was re-centred by {moved:.1f} A during the run, from "
+            f"{[round(float(v), 2) for v in a]} to {[round(float(v), 2) for v in b]}, "
+            f"to put it in the frame of the receptor this run built. The campaign "
+            f"recorded here is the one that ran."]
 
 
 def build_plan(args, work: Path) -> list[str]:

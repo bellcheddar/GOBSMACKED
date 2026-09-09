@@ -251,3 +251,31 @@ def test_a_truncated_atom_block_is_refused_rather_than_averaged(tmp_path):
         "   10.0000    0.0000    0.0000 C   0  0\n"
         "M  END\n$$$$\n", encoding="utf-8")
     assert fold._ligand_centre(sdf) is None
+
+
+# --- the archive has to record the box that was actually used ----------------
+
+def test_a_recentred_box_is_written_into_the_archived_campaign():
+    """The archived campaign is copied verbatim before the stages run, so a
+    correction made during the run never reached it. Co-folding moves the box
+    36 A into its own frame; the server then checked "is the ligand inside the
+    docking box" against a centre nowhere near the pose, failed it, and capped a
+    correct run at 40."""
+    runner = _runner()
+    before = {"center": [-9.87, 33.08, 14.14], "box": [31.7, 20.7, 23.1]}
+    after = {"center": [8.25, 2.23, 8.45], "box": [31.7, 20.7, 23.1]}
+    edits = runner._campaign_edits(before, after)
+    assert len(edits) == 1
+    assert "re-centred by 36" in edits[0]
+    assert "the one that ran" in edits[0]
+
+
+def test_an_unmoved_box_is_not_reported_as_an_edit():
+    """Every non-co-folded run goes through this. A note on all of them would be
+    noise, and rounding is not a decision."""
+    runner = _runner()
+    same = {"center": [1.0, 2.0, 3.0]}
+    assert runner._campaign_edits(same, same) == []
+    assert runner._campaign_edits(same, {"center": [1.0, 2.0, 3.2]}) == []
+    assert runner._campaign_edits({}, {}) == []
+    assert runner._campaign_edits({"center": None}, {"center": [1, 2, 3]}) == []
