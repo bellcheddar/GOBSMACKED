@@ -2,7 +2,7 @@
 
 > **Fold, dock, relax and annotate a protein-ligand complex, then check it against the experimental structure.**
 
-[![live](https://img.shields.io/badge/live-gobsmacked.mdeller.com-00d084?logo=icloud&logoColor=white)](https://gobsmacked.mdeller.com) ![python](https://img.shields.io/badge/python-3.12.3-3776AB?logo=python&logoColor=white) ![flask](https://img.shields.io/badge/flask-3.1.3-000000?logo=flask&logoColor=white) ![gunicorn](https://img.shields.io/badge/gunicorn-26.2.0-499848?logo=gunicorn&logoColor=white) ![nginx](https://img.shields.io/badge/nginx-1.24-009639?logo=nginx&logoColor=white) ![sqlite](https://img.shields.io/badge/sqlite-3-003B57?logo=sqlite&logoColor=white) ![rdkit](https://img.shields.io/badge/rdkit-2026.3.6-3838AB) ![biotite](https://img.shields.io/badge/biotite-1.6.0-467FF7) ![gemmi](https://img.shields.io/badge/gemmi-0.7.5-467FF7) ![mdtraj](https://img.shields.io/badge/mdtraj-1.11.1-467FF7) ![plip](https://img.shields.io/badge/PLIP-3.0.1-9b51e0) ![pandamap](https://img.shields.io/badge/PandaMap-4.3.0-9b51e0) ![pandadock](https://img.shields.io/badge/PandaDock-4.1.1-9b51e0) ![openmm](https://img.shields.io/badge/OpenMM-8.6.0-00897B) ![boltz](https://img.shields.io/badge/Boltz--2-2.2.1-00897B) ![esmfold](https://img.shields.io/badge/ESMFold-v1-00897B) ![tmtools](https://img.shields.io/badge/TM--align-0.3.0-00897B) ![molstar](https://img.shields.io/badge/Mol*-5.11.0-467FF7) ![plotly](https://img.shields.io/badge/Plotly.js-2.35.2-3F4F75?logo=plotly&logoColor=white) ![tests](https://img.shields.io/badge/pytest-160%20passing-00d084) ![data](https://img.shields.io/badge/data-RCSB%20%C2%B7%20UniProt%20%C2%B7%20AlphaFold%20DB%20%C2%B7%20KLIFS%20%C2%B7%20GPCRdb%20%C2%B7%20InterPro-467FF7) ![licence](https://img.shields.io/badge/licence-MIT-lightgrey) ![author](https://img.shields.io/badge/author-Marc%20C.%20Deller%2C%20D.Phil.-1C244B)
+[![live](https://img.shields.io/badge/live-gobsmacked.mdeller.com-00d084?logo=icloud&logoColor=white)](https://gobsmacked.mdeller.com) ![python](https://img.shields.io/badge/python-3.12.3-3776AB?logo=python&logoColor=white) ![flask](https://img.shields.io/badge/flask-3.1.3-000000?logo=flask&logoColor=white) ![gunicorn](https://img.shields.io/badge/gunicorn-26.2.0-499848?logo=gunicorn&logoColor=white) ![nginx](https://img.shields.io/badge/nginx-1.24-009639?logo=nginx&logoColor=white) ![sqlite](https://img.shields.io/badge/sqlite-3-003B57?logo=sqlite&logoColor=white) ![rdkit](https://img.shields.io/badge/rdkit-2026.3.6-3838AB) ![biotite](https://img.shields.io/badge/biotite-1.6.0-467FF7) ![gemmi](https://img.shields.io/badge/gemmi-0.7.5-467FF7) ![mdtraj](https://img.shields.io/badge/mdtraj-1.11.1-467FF7) ![plip](https://img.shields.io/badge/PLIP-3.0.1-9b51e0) ![pandamap](https://img.shields.io/badge/PandaMap-4.3.0-9b51e0) ![pandadock](https://img.shields.io/badge/PandaDock-4.1.1-9b51e0) ![openmm](https://img.shields.io/badge/OpenMM-8.6.0-00897B) ![boltz](https://img.shields.io/badge/Boltz--2-2.2.1-00897B) ![esmfold](https://img.shields.io/badge/ESMFold-v1-00897B) ![tmtools](https://img.shields.io/badge/TM--align-0.3.0-00897B) ![molstar](https://img.shields.io/badge/Mol*-5.11.0-467FF7) ![plotly](https://img.shields.io/badge/Plotly.js-2.35.2-3F4F75?logo=plotly&logoColor=white) ![tests](https://img.shields.io/badge/pytest-215%20passing-00d084) ![data](https://img.shields.io/badge/data-RCSB%20%C2%B7%20UniProt%20%C2%B7%20AlphaFold%20DB%20%C2%B7%20KLIFS%20%C2%B7%20GPCRdb%20%C2%B7%20InterPro-467FF7) ![licence](https://img.shields.io/badge/licence-MIT-lightgrey) ![author](https://img.shields.io/badge/author-Marc%20C.%20Deller%2C%20D.Phil.-1C244B)
 
 <table>
 <tr>
@@ -22,19 +22,32 @@
 one?** Given a sequence and a SMILES and no crystal, is the complex you get back close to
 the complex crystallography would have given you, and can you tell without looking?
 
-The answer this pipeline has arrived at, and it is provisional until the current batch of
-runs is complete: **docking into an AlphaFold model on its own does not reproduce the
-crystal**, and the reason is not the model. Two changes recover most of the gap.
-**Co-folding the receptor with the ligand first** (Boltz-2, then discard its ligand and
-re-dock) builds a pocket in which the search reliably finds a near-native pose. **Re-ranking
-those poses with Vinardo** then picks it, which the docking engine's own scoring function
-usually does not. On the case measured so far, the two together moved the same receptor and
-the same search from **D 56.2 to B 84.8**, with a ligand 1.6 A from the crystal instead of
-8.7 A.
+The answer this pipeline has arrived at, after two full campaigns on two protein families:
+**what limits the result is target-specific, and you cannot tell which limit you are up
+against by looking at the model.**
 
-Neither change touches sampling. When the search never produces a near-native pose, as it
-does not for flexible-receptor docking on this target, nothing downstream rescues it, and
-the scorecard says so rather than reporting a confident wrong answer.
+On **EGFR**, docking into an AlphaFold model did not reproduce the crystal, and the reason
+was not the model: nothing in any of those pose sets came within 6.5 A, so the search was
+the limit. **Co-folding the receptor with the ligand first** (Boltz-2, then discard its
+ligand and re-dock) built a pocket in which the search reliably found a near-native pose,
+and **re-ranking those poses with Vinardo** picked it where the docking engine's own scoring
+function did not. The two together moved the same receptor and the same search from **D 56.2
+to B 84.8**, with a ligand 1.6 A from the crystal instead of 8.7 A.
+
+On **β2AR** none of that applied. AlphaFold's pocket was already 0.32 A from the crystal,
+co-folding had nothing to add, and all three AlphaFold runs graded B or better, including
+the best result of either campaign. There the search was never the limit and the docking mode
+decided the outcome instead: flexible-receptor docking, the *worst* option on EGFR, gave the
+only A grade.
+
+**Re-ranking with Vinardo helped on both.** So did refusing to score a pose on its predicted
+affinity, and refusing to read pocket accuracy as pose accuracy: four β2AR receptors within
+0.016 A of each other produced answers spanning 1.13 to 5.69 A. When the search never
+produces a near-native pose, nothing downstream rescues it, and the scorecard says so rather
+than reporting a confident wrong answer.
+
+Both campaigns are written up below, separately and in full, because the disagreement between
+them is more informative than either on its own.
 
 ```
   PREPARE  (server, CPU)                    the campaign
@@ -296,13 +309,15 @@ bundle_template/         copied verbatim into every run bundle
 design/                  the visual contract this app is built from
 deploy/                  systemd units, nginx site, provision and deploy scripts
 scripts/                 prune, DOI checker, THIRD_PARTY generator
-tests/                   160 tests, plus two fixture archives built from crystals
+tests/                   215 tests, plus two fixture archives built from crystals
 software.yaml            the single source of truth for attribution
 ```
 
-## 🔬 A worked example: EGFR and erlotinib, six ways
+## 🔬 Worked example 1: EGFR and erlotinib, six ways
 
-![The Example tab: the six runs in one table with their grades and distances from the crystal, above four plain-language findings about what the campaign showed](docs/screenshots/example.png)
+*A kinase. The second campaign, on a GPCR, is below and disagrees with this one on three of four counts.*
+
+![The Example tab: both campaigns as tables of six runs with their grades, pocket accuracies and distances from the crystal, then a combined grid showing the kinase succeeding only where the GPCR fails, and plain-language sections on what the two disagree about](docs/screenshots/example.png)
 
 One campaign run six times on an M1 Max, changing two things and holding everything else:
 where the receptor comes from, and which docking mode searches it. Same sequence (P00533,
@@ -322,11 +337,22 @@ same MD and affinity settings. Every run below is live and can be opened.
 lowest RMSD the overlay panel measured, and `*` marks a run where that panel holds fewer
 poses than were docked, so the true best may be lower.
 
-**Co-folding is the variable that decides the outcome.** Two B grades from three co-folded
-receptors, none from three AlphaFold ones, with everything else identical. The AlphaFold
-pose sets never contain anything nearer than 6.5 Å, so nothing downstream can recover them:
-that is a sampling limit, not a scoring one. **Flexible-receptor docking failed on both
-receptors** and was the worst grade in each arm.
+**On this target, co-folding is the variable that decides the outcome.** Two B grades from
+three co-folded receptors, none from three AlphaFold ones, with everything else identical.
+The AlphaFold pose sets never contain anything nearer than 6.5 Å, so nothing downstream can
+recover them: that is a sampling limit, not a scoring one. **Flexible-receptor docking
+failed on both receptors here** and was the worst grade in each arm.
+
+Both of those sentences held for a year on one target and are false on the next one. The
+β2AR campaign below runs the identical six combinations and inverts them: its AlphaFold arm
+grades B, B and A, and flexible docking produces the best result of all twelve runs. Read
+them as observations about a kinase, not about the pipeline.
+
+**The binding-mode label agreed with the crystal in four of these six runs.** The co-folded
+`dock` run called a textbook type I inhibitor *type I½* despite carrying the campaign's best
+pose, and the AlphaFold `dock` run, 4.9 Å out, called the site *allosteric*. The second is
+the label working: a ligand in the wrong place is touching different residues. The first is
+a subpocket threshold sitting too close to a boundary.
 
 | Stage | co-fold + dock | co-fold + hybrid | co-fold + flex | AlphaFold + dock |
 |---|---|---|---|---|
@@ -339,6 +365,121 @@ receptors** and was the worst grade in each arm.
 **Co-folding costs about four minutes**, the cheapest thing in the table after prep.
 **Flexible docking costs seven times plain docking** and bought nothing. **Affinity is the
 largest stage**, more than half of a 60-minute run, and it is optional.
+
+## 🧬 Worked example 2: β2AR and carazolol, six ways
+
+*A GPCR. The same six combinations as the kinase campaign above, and the answers come out
+the other way round.*
+
+Run on 2026-09-10, sequentially on the same M1 Max, with every setting taken from the EGFR
+campaign's own `campaign.yaml` so the two are comparable: 10 poses, exhaustiveness 16,
+`rank_by: vinardo`, amber14 with openff-2.1.0, 5,000 minimisation steps, 100 ps
+equilibration, 500 ps production, 10 ps frames, affinity on with five clustered frames.
+Only the target, the receptor source and the docking mode differ.
+
+The target is the β2 adrenergic receptor (P07550), trimmed to Pfam `7tm_1` **50-326** (277
+of 413 residues, the same way EGFR was trimmed to its kinase domain), with carazolol, judged
+against **2RH1** at 2.4 Å. The reference was chosen by the app's own selector, which found
+six carazolol structures and took the sharpest: Tanimoto 1.00, the same-ligand condition the
+EGFR campaign had with 1M17.
+
+| Run | Receptor | Mode | Grade | Pocket Cα | Ligand RMSD |
+|---|---|---|---|---|---|
+| [boltz2_dock](https://gobsmacked.mdeller.com/runs/gs_20260910_2iy7ep3ulygd) | co-folded | dock | D 60.4 | 0.307 Å | 5.69 Å |
+| [boltz2_hybrid-dock](https://gobsmacked.mdeller.com/runs/gs_20260910_j3uwomcgpz2n) | co-folded | hybrid | **B 91.6** | 0.323 Å | **1.13 Å** |
+| [boltz2_flex-dock](https://gobsmacked.mdeller.com/runs/gs_20260910_lutzsft3hfh4) | co-folded | flex | **B 84.1** | 0.767 Å | **1.41 Å** |
+| [dock](https://gobsmacked.mdeller.com/runs/gs_20260910_453twmkb6yns) | AlphaFold | dock | **B 83.2** | 0.322 Å | 2.84 Å |
+| [hybrid-dock](https://gobsmacked.mdeller.com/runs/gs_20260910_g43lmwd5cshc) | AlphaFold | hybrid | **B 87.4** | 0.322 Å | **1.41 Å** |
+| [flex-dock](https://gobsmacked.mdeller.com/runs/gs_20260910_ffbrd5lvtpsb) | AlphaFold | flex | **A 94.2** | 1.182 Å | **0.90 Å** |
+
+**Ligand RMSD** here is the graded pose, the one that comes out of MD and carries the score.
+The EGFR table above quotes its *top pose*, the pose straight out of docking; the two differ
+by a few tenths of an Ångström in either direction, and the Example tab shows the graded
+figure for both campaigns.
+
+**Co-folding bought nothing.** The AlphaFold model's pocket is already 0.322 Å from the
+crystal, against the co-folded receptor's 0.307 Å, so there was nothing left to improve. On
+EGFR the same comparison is 0.908 Å against 0.649 Å, and there co-folding earns its seven
+minutes. A kinase site needs shaping around its ligand; this one does not.
+
+**The AlphaFold arm swept it**, B, B and A, where EGFR's went D, D and D. **Flexible docking
+produced the best run of all twelve** at 0.90 Å, having been the worst mode in both EGFR
+arms. **Plain docking came last in both arms here**, at 5.69 Å and 2.84 Å, having been the
+best EGFR run.
+
+**Receptor accuracy does not predict pose accuracy.** The four runs that docked into a fixed
+receptor span **0.307 to 0.323 Å** of pocket Cα, four models from two different prediction
+methods, and produce answers from **1.13 to 5.69 Å**. The A-grade run has the *least*
+accurate pocket of the six, at 1.182 Å, because flexible docking moved the receptor and was
+right to.
+
+**The binding-mode label agreed with the crystal in all six runs**, orthosteric and
+inactive-like every time, correct for an inverse agonist, and still correct in the run whose
+pose was 5.69 Å wrong. That is a better record than the kinase classifier managed on its own
+campaign (four of six), and it is the point of reading the label off the structure rather
+than off the score.
+
+### What the two campaigns settle between them
+
+The disagreement is not noise, and it has a mechanism: **the two targets are limited at
+different stages**. On EGFR nothing in any AlphaFold pose set was closer than 6.5 Å, so
+sampling was the constraint and co-folding relieved it by handing the search an easier
+pocket. On β2AR sampling was never the constraint, every receptor was accurate, and the
+modes that search harder won on both arms.
+
+Nothing visible in the protein model tells you which case you are in. That is the argument
+for verifying against a structure rather than trusting a docking score, and it is why
+`docking.rank_by` and the docking mode are settings rather than defaults.
+
+### Timings, and why they are not a measurement
+
+| Stage | co-fold + dock | co-fold + hybrid | co-fold + flex | AF + dock | AF + hybrid | AF + flex |
+|---|---|---|---|---|---|---|
+| fold | 6.9 m | 6.6 m | 6.4 m | 0 | 0 | 0 |
+| dock | 5.5 m | 4.2 m | 18.2 m | 3.6 m | 4.1 m | 18.5 m |
+| MD | 43.0 m | 57.6 m | 56.8 m | 99.2 m | 73.5 m | 31.2 m |
+| affinity | 108.0 m | 90.5 m | 90.9 m | 71.3 m | 75.8 m | 40.7 m |
+| **total** | **165 m** | **160 m** | **173 m** | **175 m** | **154 m** | **91 m** |
+
+A GPCR run costs about 2.7× a kinase run of the same settings, and **affinity is the largest
+stage at up to 65% of it**, against about half on EGFR: β2AR's MSA runs to 11,688 sequences,
+so every Boltz-2 pass is dearer. Affinity remains optional and outside the score.
+
+**Wall-clock time here is not a clean measurement and should not be read as one.** MD
+throughput varied from 12.1 to 34.1 ns/day across runs whose systems span only 86k to 151k
+atoms, and the largest system was the second fastest. That is contention from other work on
+the machine, not a property of the runs. The AlphaFold boxes really are about 1.7× larger
+than the co-folded ones, which is a real effect; everything finer than that is noise. The
+EGFR timing table above was collected the same way and carries the same caveat.
+
+### The GPCR-specific caveats
+
+**There is no lipid bilayer.** The MD solvates in a 10 Å padded TIP3P box with NaCl, so the
+seven-helix bundle runs with its lipid-facing surface in water. Measured rather than assumed:
+over 500 ps overall helicity was flat or slightly higher at the end (0.73 to 0.75, 0.76 to
+0.76, 0.79 to 0.80, 0.80 to 0.82), whole-protein Cα RMSD plateaued by about 300 ps at 1.25 to
+1.76 Å, and TM2 through TM6 held 0.94 to 1.00 helicity throughout. Nothing unfolds at this
+length. It is still not a membrane simulation and says nothing about nanosecond runs.
+
+**Two artefacts of the trim.** TM7 is the only helix that loses helicity and has the highest
+per-helix Cα RMSD in every run, because residue 326 is the last in the box and it is NPxxY's
+tyrosine: the switch panel's NPxxY RMSD should be read with that in mind. And Pfam's boundary
+at 50 sits inside UniProt's TM1 (30-56), so only a 7-residue stub of TM1 is present. It did
+not unravel, and it moved least of any helix, but the bundle is missing that helix's
+lipid-facing surface.
+
+**The reference is a chimera and the models are not.** 2RH1 chain A is β2AR 29-230, then T4
+lysozyme 1002-1161, then β2AR 263-365: the fusion replaces ICL3, which the models keep. Glu268,
+the residue the TM3-TM6 activation distance is measured on, sits five residues past that
+junction. `modes.py` runs identical code on prediction and reference, so the *method* is like
+for like, but the *constructs* are not, and they differ exactly at the measurement point.
+
+**TM6 stays shut, as an inverse agonist demands.** TM3-TM6 Cα ran 9.39 to 12.05 Å across
+every frame of every run, against 11.15 Å for the crystal and 19.0 Å for agonist-bound 3SN6,
+so the 13 Å activation cut is never approached. The cytoplasmic and extracellular halves of
+TM6 moved by the same amount, a ratio of about 1.0, where activation is a pivot with a ratio
+far above 1. Note that this campaign has no ligand-free MD, so it cannot say what TM6 does on
+binding, only that carazolol does not open it.
 
 ## 🧪 What the pipeline was tuned on
 
@@ -392,13 +533,15 @@ affinity head returns pIC50 within 0.2 log units, ranks an 8.30 Å pose first, a
 correlates with RMSD at ρ +0.26 (p 0.48). It is reported beside the score and never inside
 it.
 
-One target, one ligand. Everything above is an observation on EGFR with erlotinib, not a
-general claim, and `docking.rank_by: engine` exists because of that.
+One target, one ligand. Everything in this section is an observation on EGFR with
+erlotinib, not a general claim, and `docking.rank_by: engine` exists because of that. The
+β2AR campaign above is what that caution looks like when it turns out to have been
+warranted: three of the four conclusions drawn here inverted on the next target tried.
 
 ## 🧫 Testing
 
 ```bash
-make test                # 160 tests, about 90 seconds
+make test                # 215 tests, about 90 seconds
 make check-refs          # every DOI in software.yaml, checked against Crossref
 make third-party         # regenerate THIRD_PARTY.md from software.yaml
 python tests/fixtures/build_fixtures.py    # rebuild the two fixture archives
@@ -406,7 +549,7 @@ python tests/fixtures/build_fixtures.py    # rebuild the two fixture archives
 
 The fixtures are built from real crystals rather than from noise: 4HJO judged against 1M17, and 5D5A against 2RH1, with the ligand displaced to make a plausible docked pose and the bundle's own `summarise` stage computing the trajectory summary. So they exercise the last stage of the bundle as well as the first stage of the server.
 
-End to end, EGFR plus erlotinib scores 83.5 (B) against 1M17 and labels Type I, DFG-in on both sides; β2AR plus carazolol scores 94.0 (A) against 2RH1 and labels orthosteric, inactive-like on both.
+Run end to end, the **fixtures** score 83.5 (B) for EGFR plus erlotinib against 1M17, labelling Type I, DFG-in on both sides, and 94.0 (A) for β2AR plus carazolol against 2RH1, labelling orthosteric, inactive-like on both. These are fixture archives built by displacing a crystal ligand, not pipeline runs: the real campaigns on those two targets are the two worked examples above, and they score differently.
 
 ## 🌐 Deployment
 
@@ -446,8 +589,11 @@ Roadmap for GOBSMACKED, in dependency order. Suggestions welcome.
 - [x] **Re-dock with alternative scoring functions, and test the affinity head as a re-ranker.** Twenty docking runs across the five receptors showed the apo sampling ceiling was a property of the search, not of the receptors: ESMFold's best available pose moves from 5.44 Å to 2.06 Å, and pooling every pose gives all five receptors something at 3.04 Å or better. No protocol tested picks it: 4.15 Å mean top-1 against a 1.94 Å oracle. The affinity head returns 0.19 log units of pIC50 across poses spanning 1.51 to 8.77 Å, ranks the 8.30 Å pose first, and correlates with RMSD at rho +0.26 (p 0.48), so it is not a rescoring function and is not used as one
 - [x] **Act on the five-structure findings, end to end.** Co-folding offered on Prepare (`fold.method: boltz2`, a checkbox rather than a structure-source entry, since the fetched structure still sizes the box), Vinardo re-ranking reported in the dock stage and shown beside the engine's own scores, MD rescue removed from the composite with its weight redistributed proportionally, and the predicted affinity's exclusion documented from measurement rather than principle. Prepare, bundle, results page and About all updated
 - [x] **Act on the ranking gap rather than only reporting it.** Vinardo now re-orders the poses and its choice is what goes to MD, after measuring nine pose sets: the engine put a pose within 2 Å first once, Vinardo four times, and on the run the engine got right it chose the same pose, so promoting it cost nothing. Consensus was tested at the same time and dropped, a three-way Borda count and an overrule rule both scoring identically to Vinardo alone. First end-to-end confirmation: the same co-folded receptor and the same search went from D 56.2 to **B 84.8**, ligand RMSD 8.72 Å to 1.62 Å, purely by carrying a different one of the ten poses forward
-- [ ] **Finish the six-run matrix and write up what it settles.** Two receptor sources by three docking modes, run sequentially with every fix in place. Provisional so far: co-folding plus Vinardo recovers the crystal pose wherever the search finds one, and neither touches the case where it does not
-- [ ] **Close the remaining sampling gap.** Every receptor now has a near-native pose available and nothing ranks it first. This is the open problem, and it is upstream of anything the scorecard can fix: consensus scoring across functions, a rescoring model trained on decoys rather than on affinity, or short per-pose minimisation before ranking
+- [x] **Finish the six-run matrix and write up what it settles.** Two receptor sources by three docking modes, run sequentially with every fix in place. On EGFR it settled that co-folding decides the outcome and flexible docking is the worst mode in both arms, and both of those turned out to be facts about kinases
+- [x] **Run the same matrix on a second family, to find out which conclusions were about the pipeline and which were about the target.** β2AR plus carazolol against 2RH1, six runs on 2026-09-10 with every EGFR setting held. Three of four conclusions inverted: the AlphaFold arm graded B, B and A where EGFR's graded D, D and D; flexible docking gave the best of all twelve runs at 0.90 Å having been the worst mode on EGFR; and co-folding bought nothing, because AlphaFold's β2AR pocket is already 0.322 Å from the crystal against the co-folded 0.307 Å. What survived: Vinardo re-ranking helps on both, predicted affinity signals nothing on either, and pocket accuracy predicts pose accuracy on neither. The mechanism is that EGFR is sampling-limited and β2AR is not
+- [ ] **A ligand-free MD baseline for the GPCR campaign.** Every β2AR trajectory has carazolol bound, so the campaign can say TM6 stays shut but not whether binding moved it. One apo run on the same co-folded receptor, same box, same 500 ps, would make the TM6 comparison paired rather than cross-method. About 45 minutes, MD stage only
+- [ ] **A third family, chosen to break something.** Two campaigns give two data points and a mechanism; the mechanism predicts that a target with a flexible, poorly-determined pocket should behave like EGFR and a rigid, exhaustively-determined one like β2AR. A protease or a nuclear receptor would test that rather than confirm it
+- [ ] **Close the remaining sampling gap.** Every EGFR receptor has a near-native pose available and nothing ranks it first. This is the open problem for sampling-limited targets, and it is upstream of anything the scorecard can fix: consensus scoring across functions, a rescoring model trained on decoys rather than on affinity, or short per-pose minimisation before ranking. It is not universal, and the β2AR campaign is the counter-example: there the search found the answer and the mode chosen decided whether it was kept
 - [x] **Rank scoring functions on a fixed pose set.** The five runs left 50 poses whose distance to the crystal is already known, so the ranking question can be asked directly and cheaply: rescore the same poses with several independent scoring functions and ask which one puts a near-native pose first, per receptor type. Done, with seven functions over fifty poses: rescoring alone recovers the crystal pose on the control, and it separates two different failures, ranking for holo-like pockets and sampling for apo-like ones
 - [ ] **Ingest poses from other engines.** Boltz-2, Vina and DiffDock all produce poses this scorecard could grade, and the comparison is more interesting than any single engine's self-report
 - [ ] **Cryptic pocket detection.** The pocket volume trace already shows a pocket opening and closing during MD; naming that as a finding rather than a plot is the next step
